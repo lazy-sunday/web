@@ -1,0 +1,201 @@
+'use client';
+
+// The one WebSocket hook. Connects to the game server, auto-rejoins with the
+// localStorage token for this room code, and exposes { lobby, view, events, send }.
+//
+// The client never receives more than its own RoundView + filtered events; any
+// "hidden knowledge" (peeked cards) lives only in what past events told us, so
+// we keep the event log around for the table UI (M3) to build its peek memory.
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { EngineEvent, PlayerId, RoundView } from '@lazy-sunday/engine';
+import type {
+  ClientCommand,
+  ClientMessage,
+  LobbyState,
+  ServerMessage,
+} from '@lazy-sunday/server/protocol';
+import { WS_URL } from './config';
+
+export interface StoredIdentity {
+  playerId: PlayerId;
+  token: string;
+  name: string;
+  color: string;
+}
+
+export interface GameSocket {
+  /** Raw socket status. */
+  status: 'connecting' | 'open' | 'closed';
+  /** Set once this client has a seat in the room. */
+  me: StoredIdentity | null;
+  lobby: LobbyState | null;
+  view: RoundView | null;
+  roundNumber: number;
+  /** Filtered engine events, newest last (capped). */
+  events: EngineEvent[];
+  lastError: { code: string; message: string } | null;
+  /** Join fresh with a chosen name + color (also persists identity for rejoin). */
+  join: (name: string, color: string) => void;
+  /** Send a raw protocol message. */
+  send: (msg: ClientMessage) => void;
+  /** Send an engine command (server stamps our player id). */
+  sendCommand: (command: ClientCommand) => void;
+  clearError: () => void;
+}
+
+const MAX_EVENTS = 200;
+
+function storageKey(roomCode: string): string {
+  return `lazy-sunday:${roomCode.toUpperCase()}`;
+}
+
+export function loadIdentity(roomCode: string): StoredIdentity | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(storageKey(roomCode));
+    return raw ? (JSON.parse(raw) as StoredIdentity) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveIdentity(roomCode: string, id: StoredIdentity): void {
+  try {
+    window.localStorage.setItem(storageKey(roomCode), JSON.stringify(id));
+  } catch {
+    /* private mode etc. — reconnection just won't survive a refresh */
+  }
+}
+
+export function useGameSocket(roomCode: string): GameSocket {
+  const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
+  const [me, setMe] = useState<StoredIdentity | null>(null);
+  const [lobby, setLobby] = useState<LobbyState | null>(null);
+  const [view, setView] = useState<RoundView | null>(null);
+  const [roundNumber, setRoundNumber] = useState(0);
+  const [events, setEvents] = useState<EngineEvent[]>([]);
+  const [lastError, setLastError] = useState<{ code: string; message: string } | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const pendingProfile = useRef<{ name: string; color: string } | null>(null);
+  const closedByUs = useRef(false);
+
+  const rawSend = useCallback((msg: ClientMessage) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  }, []);
+
+  useEffect(() => {
+    closedByUs.current = false;
+    let retryDelay = 500;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function connect(): void {
+      setStatus('connecting');
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setStatus('open');
+        retryDelay = 500;
+        // Auto-rejoin: same room code + stored token reattaches our seat.
+        const stored = loadIdentity(roomCode);
+        if (stored) {
+          setMe(stored);
+          ws.send(
+            JSON.stringify({
+              type: 'join',
+              roomCode,
+              name: stored.name,
+              color: stored.color,
+              token: stored.token,
+            } satisfies ClientMessage),
+          );
+        } else if (pendingProfile.current) {
+          const p = pendingProfile.current;
+          ws.send(JSON.stringify({ type: 'join', roomCode, name: p.name, color: p.color } satisfies ClientMessage));
+        }
+      };
+
+      ws.onmessage = (e: MessageEvent<string>) => {
+        let msg: ServerMessage;
+        try {
+          msg = JSON.parse(e.data) as ServerMessage;
+        } catch {
+          return;
+        }
+        switch (msg.type) {
+          case 'joined': {
+            const profile = pendingProfile.current ?? loadIdentity(roomCode);
+            const identity: StoredIdentity = {
+              playerId: msg.playerId,
+              token: msg.token,
+              name: profile?.name ?? '',
+              color: profile?.color ?? '',
+            };
+            pendingProfile.current = null;
+            saveIdentity(roomCode, identity);
+            setMe(identity);
+            setLastError(null);
+            break;
+          }
+          case 'lobby':
+            setLobby(msg.lobby);
+            break;
+          case 'view':
+            setView(msg.view);
+            setRoundNumber(msg.roundNumber);
+            break;
+          case 'event':
+            setEvents((prev) => {
+              const next = [...prev, msg.event];
+              return next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next;
+            });
+            break;
+          case 'error':
+            setLastError({ code: String(msg.code), message: msg.message });
+            break;
+          case 'sessionEvent':
+          case 'reaction':
+          case 'pong':
+            break;
+        }
+      };
+
+      ws.onclose = () => {
+        if (wsRef.current === ws) wsRef.current = null;
+        setStatus('closed');
+        if (!closedByUs.current) {
+          retryTimer = setTimeout(connect, retryDelay);
+          retryDelay = Math.min(retryDelay * 2, 8_000);
+        }
+      };
+    }
+
+    connect();
+    return () => {
+      closedByUs.current = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, [roomCode]);
+
+  const join = useCallback(
+    (name: string, color: string) => {
+      pendingProfile.current = { name, color };
+      rawSend({ type: 'join', roomCode, name, color });
+    },
+    [rawSend, roomCode],
+  );
+
+  const sendCommand = useCallback(
+    (command: ClientCommand) => rawSend({ type: 'command', command }),
+    [rawSend],
+  );
+
+  const clearError = useCallback(() => setLastError(null), []);
+
+  return { status, me, lobby, view, roundNumber, events, lastError, join, send: rawSend, sendCommand, clearError };
+}

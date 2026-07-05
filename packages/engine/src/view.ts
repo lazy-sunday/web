@@ -1,0 +1,81 @@
+// Per-player redaction. THIS is the only shape that may ever be serialized to a
+// client. Face-down identities (and even their stable ids) stay server-side so a
+// modified client can't out-remember a human — memory is the game.
+
+import type { ActionName, Card } from './cards.js';
+import type { PendingGift, Phase, PlayerId, RoundResult, RoundState } from './types.js';
+
+export interface PlayerView {
+  id: PlayerId;
+  /** Number of face-down cards in their chore list. Identities are never included. */
+  listSize: number;
+  skipNextTurn: boolean;
+  setupPeeked: boolean;
+}
+
+export interface RoundView {
+  phase: Phase;
+  /** Whose turn it is (null during setupPeek/reveal). */
+  currentPlayer: PlayerId | null;
+  caller: PlayerId | null;
+  finalTurnQueue: PlayerId[];
+  deckCount: number;
+  doneCount: number;
+  /** The DONE pile's top card — always visible; it's the slap target. Its id is
+   *  what clients echo back as `expectedTopId` when slapping. */
+  doneTop: Card | null;
+  players: PlayerView[];
+  /** The drawn card, present ONLY in the current player's own view during 'drawn'. */
+  myDrawnCard: Card | null;
+  pendingAction: {
+    actor: PlayerId;
+    action: ActionName;
+    step: 'input' | 'knockItOutDecision';
+    /** Which slot was peeked (public — everyone saw which card was picked up). */
+    knockSlot?: number;
+  } | null;
+  pendingGift: Pick<PendingGift, 'from' | 'to'> | null;
+  /** Set at reveal: full face-up lists, totals, and round scores are then public. */
+  result: RoundResult | null;
+}
+
+export function viewFor(state: RoundState, playerId: PlayerId): RoundView {
+  const inPlay = state.phase === 'turn' || state.phase === 'drawn' || state.phase === 'action';
+  const pa = state.pendingAction;
+  return {
+    phase: state.phase,
+    currentPlayer: inPlay ? state.players[state.turn]!.id : null,
+    caller: state.caller,
+    finalTurnQueue: state.finalTurnQueue.slice(),
+    deckCount: state.deck.length,
+    doneCount: state.done.length,
+    doneTop: state.done.length > 0 ? { ...state.done[state.done.length - 1]! } : null,
+    players: state.players.map((p) => ({
+      id: p.id,
+      listSize: p.list.length,
+      skipNextTurn: p.skipNextTurn,
+      setupPeeked: p.setupPeeked,
+    })),
+    myDrawnCard:
+      state.phase === 'drawn' && state.players[state.turn]!.id === playerId && state.drawnCard
+        ? { ...state.drawnCard }
+        : null,
+    pendingAction: pa
+      ? {
+          actor: pa.actor,
+          action: pa.card.name as ActionName,
+          step: pa.step,
+          ...(pa.knockSlot !== undefined ? { knockSlot: pa.knockSlot } : {}),
+        }
+      : null,
+    pendingGift: state.pendingGift
+      ? { from: state.pendingGift.from, to: state.pendingGift.to }
+      : null,
+    result: state.result ? structuredClone(state.result) : null,
+  };
+}
+
+/** True if this event may be sent to this player. Private events carry `to`. */
+export function eventVisibleTo(event: { type: string; to?: PlayerId }, playerId: PlayerId): boolean {
+  return !('to' in event && event.to !== undefined) || event.to === playerId;
+}
