@@ -90,6 +90,11 @@ export type ServerMessage =
   | { type: 'lobby'; lobby: LobbyState }
   /** The recipient's own redacted RoundView — each player gets a different one. */
   | { type: 'view'; view: RoundView; roundNumber: number }
+  /** How long the current turn/peek/action/gift has before it auto-skips.
+   *  `remainingMs` is a duration (not an absolute time) so client clock skew is
+   *  irrelevant; null means nothing is currently timed. `players` are who the
+   *  clock is running against right now. */
+  | { type: 'turnTimer'; remainingMs: number | null; players: PlayerId[] }
   /** An engine event this player is allowed to see (eventVisibleTo-filtered). */
   | { type: 'event'; event: EngineEvent }
   | { type: 'sessionEvent'; event: SessionEvent }

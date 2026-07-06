@@ -574,6 +574,57 @@ select {
   width: 100%;
 }
 
+/* -- turn auto-skip countdown -- */
+.turn-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--night-accent);
+  background: rgba(143, 162, 220, 0.18);
+  border: 1px solid rgba(143, 162, 220, 0.45);
+}
+
+.turn-timer svg {
+  display: block;
+}
+
+.turn-timer-secs {
+  font-weight: 700;
+}
+
+/* When the clock is on YOU, make it unmistakable. */
+.turn-timer[data-on-me='true'] {
+  color: var(--night-panel);
+  background: var(--day-sun);
+  border-color: var(--ink);
+}
+
+/* Running low — pulse gently (still calm; respects reduced motion below). */
+.turn-timer[data-warn='true'] {
+  animation: timer-pulse 1s ease-in-out infinite;
+}
+
+@keyframes timer-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-timer[data-warn='true'] {
+    animation: none;
+  }
+}
+
 /* -- shared card sizing -- the SVGs are 695x949 (aspect-ratio ~0.732) -- */
 
 .card-img {

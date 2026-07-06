@@ -33,6 +33,14 @@ export interface ReactionEvent {
   at: number;
 }
 
+/** The current turn clock. `deadline` is a LOCAL epoch-ms (we convert the
+ *  server's remaining-duration into our own clock on receipt, so server/client
+ *  clock skew never distorts the countdown). null = nothing is timed. */
+export interface TurnTimer {
+  deadline: number | null;
+  players: PlayerId[];
+}
+
 export interface GameSocket {
   /** Raw socket status. */
   status: 'connecting' | 'open' | 'closed';
@@ -49,6 +57,8 @@ export interface GameSocket {
   latestSessionEvent: SessionEvent | null;
   /** Incoming emoji reactions, newest last (capped, client-timestamped). */
   reactions: ReactionEvent[];
+  /** Current turn/peek/action auto-skip clock (local deadline + who it's for). */
+  turnTimer: TurnTimer;
   lastError: { code: string; message: string } | null;
   /** Join fresh with a chosen name + color (also persists identity for rejoin). */
   join: (name: string, color: string) => void;
@@ -97,6 +107,7 @@ export function useGameSocket(roomCode: string): GameSocket {
   const [events, setEvents] = useState<EngineEvent[]>([]);
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
   const [reactions, setReactions] = useState<ReactionEvent[]>([]);
+  const [turnTimer, setTurnTimer] = useState<TurnTimer>({ deadline: null, players: [] });
   const [lastError, setLastError] = useState<{ code: string; message: string } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -168,6 +179,13 @@ export function useGameSocket(roomCode: string): GameSocket {
           case 'view':
             setView(msg.view);
             setRoundNumber(msg.roundNumber);
+            break;
+          case 'turnTimer':
+            // Convert the server's remaining-duration into our own local clock.
+            setTurnTimer({
+              deadline: msg.remainingMs === null ? null : Date.now() + msg.remainingMs,
+              players: msg.players,
+            });
             break;
           case 'event':
             setEvents((prev) => {
@@ -256,6 +274,7 @@ export function useGameSocket(roomCode: string): GameSocket {
     sessionEvents,
     latestSessionEvent,
     reactions,
+    turnTimer,
     lastError,
     join,
     send: rawSend,

@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CardName, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
 import { usePeeks } from '../lib/usePeeks';
+import { useCountdown } from '../lib/useCountdown';
 import { useSound } from '../lib/useSound';
 import { useGameSounds } from '../lib/useGameSounds';
 import { ActionModal } from './ActionModal';
@@ -95,7 +96,14 @@ export function GameTable({ game }: { game: Game }) {
 
   return (
     <div className="table-felt">
-      <TableBanner view={view} roundNumber={roundNumber} nameOf={nameOf} activityLine={activityLine} />
+      <TableBanner
+        view={view}
+        roundNumber={roundNumber}
+        nameOf={nameOf}
+        activityLine={activityLine}
+        turnTimer={game.turnTimer}
+        myId={myId}
+      />
       <HouseRuleBadges toggles={lobby.toggles} />
 
       {view.phase === 'setupPeek' ? (
@@ -163,11 +171,15 @@ function TableBanner({
   roundNumber,
   nameOf,
   activityLine,
+  turnTimer,
+  myId,
 }: {
   view: NonNullable<Game['view']>;
   roundNumber: number;
   nameOf: (id: PlayerId | null) => string;
   activityLine: string | null;
+  turnTimer: Game['turnTimer'];
+  myId: PlayerId;
 }) {
   return (
     <div className="phase-banner">
@@ -179,9 +191,35 @@ function TableBanner({
             ? `${nameOf(view.currentPlayer)}'s turn`
             : ''}
       </span>
+      <TurnCountdown turnTimer={turnTimer} myId={myId} />
       {view.caller && <span>&quot;NOT ME!&quot; called by {nameOf(view.caller)}</span>}
       {activityLine && <span className="activity-line">{activityLine}</span>}
     </div>
+  );
+}
+
+/** The visible turn clock. Shows whoever the auto-skip timer is running
+ *  against right now; emphasizes and warns when the clock is on YOU. */
+function TurnCountdown({ turnTimer, myId }: { turnTimer: Game['turnTimer']; myId: PlayerId }) {
+  const seconds = useCountdown(turnTimer.deadline);
+  if (seconds === null || turnTimer.players.length === 0) return null;
+  const onMe = turnTimer.players.includes(myId);
+  const warn = seconds <= 10;
+  return (
+    <span
+      className="turn-timer"
+      data-on-me={onMe}
+      data-warn={warn}
+      role="timer"
+      aria-label={`${onMe ? 'Your turn' : 'This turn'} auto-skips in ${seconds} second${seconds === 1 ? '' : 's'}`}
+    >
+      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden focusable="false">
+        <circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M12 13V8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path d="M9.5 2.5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+      <span className="turn-timer-secs">{seconds}s</span>
+    </span>
   );
 }
 

@@ -45,12 +45,16 @@ export function ActionModal({
   const pa = view?.pendingAction;
   const isMine = !!pa && !!me && pa.actor === me.playerId;
 
-  // Reset local wizard state whenever a fresh action starts (or clears).
+  // Reset local wizard state whenever a fresh action starts (or clears) AND
+  // whenever the step advances. Knock It Out's peek→decision transition keeps
+  // the same actor+action and only flips pa.step, so without `pa?.step` here the
+  // `sending` guard from the peek command would never clear and the
+  // Discard/Keep buttons would stay disabled.
   useEffect(() => {
     setStepIndex(0);
     setPicks({});
     setSending(false);
-  }, [pa?.actor, pa?.action]);
+  }, [pa?.actor, pa?.action, pa?.step]);
 
   function cancel() {
     if (sending) return;

@@ -157,6 +157,14 @@ function handleJoin(conn: Conn, msg: Extract<ClientMessage, { type: 'join' }>): 
       // client keeps its own peek memory. We resend just the current redacted view.
       if (room.round) {
         send(conn.socket, { type: 'view', view: viewFor(room.round, existing.id), roundNumber: room.roundNumber });
+        // Give the rejoiner the TRUE remaining time, not a fresh full countdown.
+        const remainingMs =
+          room.turnDeadline === null ? null : Math.max(0, room.turnDeadline - Date.now());
+        send(conn.socket, {
+          type: 'turnTimer',
+          remainingMs,
+          players: room.status === 'playing' && room.round ? blockingPlayers(room.round) : [],
+        });
       }
       return;
     }
@@ -390,13 +398,26 @@ export function blockingPlayers(state: RoundState): PlayerId[] {
 function resetTimers(room: Room): void {
   for (const t of room.timers.values()) clearTimeout(t);
   room.timers.clear();
-  if (room.status !== 'playing' || !room.round) return;
+  if (room.status !== 'playing' || !room.round) {
+    room.turnDeadline = null;
+    broadcast(room, { type: 'turnTimer', remainingMs: null, players: [] });
+    return;
+  }
   const timeoutMs = room.toggles.turnTimeoutSeconds * 1000;
-  for (const pid of blockingPlayers(room.round)) {
+  const blocking = blockingPlayers(room.round);
+  for (const pid of blocking) {
     const t = setTimeout(() => onTurnTimeout(room, pid), timeoutMs);
     t.unref();
     room.timers.set(pid, t);
   }
+  room.turnDeadline = blocking.length > 0 ? Date.now() + timeoutMs : null;
+  // A duration, not an absolute time — the client turns it into its own local
+  // deadline, so mismatched server/client clocks don't skew the countdown.
+  broadcast(room, {
+    type: 'turnTimer',
+    remainingMs: room.turnDeadline === null ? null : timeoutMs,
+    players: blocking,
+  });
 }
 
 function onTurnTimeout(room: Room, pid: PlayerId): void {

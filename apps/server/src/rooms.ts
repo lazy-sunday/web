@@ -45,6 +45,9 @@ export interface Room {
   roundNumber: number;
   /** Per-blocking-player turn timers. */
   timers: Map<PlayerId, NodeJS.Timeout>;
+  /** Epoch ms when the current turn timer(s) fire, or null when nothing is timed
+   *  (lobby, between-rounds, reveal). Used to tell clients how long is left. */
+  turnDeadline: number | null;
   createdAt: number;
   /** When the room last had zero connected sockets (for GC), or null. */
   emptySince: number | null;
@@ -70,6 +73,7 @@ export function createRoom(): Room {
     round: null,
     roundNumber: 0,
     timers: new Map(),
+    turnDeadline: null,
     createdAt: Date.now(),
     emptySince: Date.now(),
   };
