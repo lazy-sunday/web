@@ -538,16 +538,17 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------------------------------------------------------------- table placeholder */
+/* ---------------------------------------------------------------- table (Milestone 3) */
 
-.table-view {
+.table-felt {
   background: var(--felt);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
-  padding: 20px;
+  padding: 14px 12px 20px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
+  min-height: 60dvh;
 }
 
 .phase-banner {
@@ -567,99 +568,445 @@ select {
   font-size: 18px;
 }
 
-.pile-row {
-  display: flex;
-  gap: 24px;
-  justify-content: center;
-  align-items: flex-start;
+.activity-line {
+  color: var(--night-moon);
+  font-size: 13px;
+  width: 100%;
 }
 
-.pile {
-  text-align: center;
-  font-size: 14px;
-  font-weight: 700;
-}
+/* -- shared card sizing -- the SVGs are 695x949 (aspect-ratio ~0.732) -- */
 
-.pile img,
-.pile .card-face {
-  width: 92px;
+.card-img {
+  aspect-ratio: 695 / 949;
+  width: 100%;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(71, 37, 15, 0.25);
   display: block;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
 }
 
-.card-face {
-  aspect-ratio: 2 / 3;
-  background: var(--day-cream);
-  border: 2px solid var(--day-base);
+.card-img-sm {
+  width: 52px;
+}
+
+.card-img-lg {
+  width: 96px;
+}
+
+/* -- opponent rows -- */
+
+.opponent-rows {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  font-family: var(--font-display);
-  font-size: 13px;
-  color: var(--ink);
-  text-align: center;
-}
-
-.card-face[data-kind='action'] {
-  background: var(--night-panel);
-  border-color: var(--night-moon);
-  color: var(--night-accent);
-}
-
-.pile-count {
-  margin-top: 6px;
-  color: rgba(71, 37, 15, 0.7);
-}
-
-.my-list {
-  display: flex;
+  flex-direction: column;
   gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
 }
 
-.my-list img {
-  width: 64px;
-  border-radius: 6px;
-  box-shadow: 0 1px 4px rgba(71, 37, 15, 0.3);
-}
-
-.seat-strip {
+.opponent-row {
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: var(--radius);
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.seat-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.65);
+.opponent-row[data-current='true'] {
+  background: var(--day-cream);
+  box-shadow: 0 0 0 2px var(--day-base) inset;
 }
 
-.seat-row[data-current='true'] {
-  background: var(--day-sun);
+.opponent-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  min-height: 28px;
+}
+
+.opponent-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--day-base);
+  box-shadow: 0 0 0 3px rgba(245, 166, 43, 0.3);
+  flex-shrink: 0;
+}
+
+.card-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: rgba(71, 37, 15, 0.7);
+  min-width: 20px;
+  text-align: right;
+}
+
+.caller-badge {
+  background: var(--night-base);
+  color: var(--night-accent);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 8px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.opponent-cards {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.opp-slot {
+  flex-shrink: 0;
+  width: 44px;
+}
+
+/* -- center piles -- */
+
+.center-piles {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  position: relative;
+}
+
+.pile-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(71, 37, 15, 0.75);
+  min-width: 96px;
+  min-height: 44px;
+  transition: transform 100ms ease-out;
+}
+
+.pile-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.pile-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pile-btn .pile-count {
+  display: block;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.not-me-btn {
+  min-height: 52px;
+  padding: 12px 20px;
+  font-size: 16px;
+  letter-spacing: 0.03em;
+}
+
+/* -- setup peek panel -- */
+
+.setup-peek-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  padding: 8px 4px;
+}
+
+.setup-peek-title {
+  font-size: 22px;
+  text-align: center;
+}
+
+.setup-peek-sub {
+  text-align: center;
+  color: rgba(71, 37, 15, 0.75);
+  font-size: 15px;
+}
+
+.waiting-line {
+  text-align: center;
+  font-weight: 700;
+  color: rgba(71, 37, 15, 0.65);
+}
+
+/* -- my row -- */
+
+.my-row {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+
+.my-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.my-row-label {
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.turn-hint {
+  font-size: 13px;
+  color: var(--ok);
   font-weight: 700;
 }
 
-.debug-details {
-  font-size: 13px;
+.my-list-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px;
+  scrollbar-width: thin;
 }
 
-.debug-details pre {
-  overflow-x: auto;
+.slot-btn {
+  flex-shrink: 0;
+  width: 72px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 10px;
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+  cursor: pointer;
+}
+
+.slot-btn-lg {
+  width: 88px;
+}
+
+.slot-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.slot-btn[data-selected='true'] {
+  box-shadow: 0 0 0 3px var(--day-base);
+  transform: translateY(-4px);
+}
+
+.slot-btn[data-pickable='true'] {
+  box-shadow: 0 0 0 3px var(--night-moon);
+  animation: pickable-pulse 1.4s ease-in-out infinite;
+}
+
+.slot-btn:disabled:not([data-pickable='true']) {
+  cursor: default;
+}
+
+@keyframes pickable-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--night-moon);
+  }
+  50% {
+    box-shadow: 0 0 0 5px var(--night-moon);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-btn[data-pickable='true'] {
+    animation: none;
+  }
+}
+
+/* -- drawn card panel -- */
+
+.drawn-card-panel {
+  display: flex;
+  gap: 14px;
+  align-items: center;
   background: var(--night-panel);
-  color: var(--night-accent);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 12px;
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.5;
+  animation: drawn-enter 220ms ease-out;
+}
+
+@keyframes drawn-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.drawn-anim {
+  animation: drawn-enter 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawn-card-panel,
+  .drawn-anim {
+    animation: none;
+  }
+}
+
+.drawn-card-face {
+  flex-shrink: 0;
+  width: 88px;
+}
+
+.drawn-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.drawn-card-actions .btn {
+  color: var(--night-accent);
+}
+
+.drawn-card-actions .btn-primary {
+  color: var(--ink);
+}
+
+.drawn-hint {
+  color: var(--night-accent);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* -- slot picker overlay (take from DONE) -- */
+
+.slot-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 24, 48, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  z-index: 40;
+}
+
+.slot-picker-panel {
+  background: var(--felt);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.slot-picker-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.slot-picker-sub {
+  font-size: 14px;
+  color: rgba(71, 37, 15, 0.7);
+}
+
+/* -- reveal screen -- */
+
+.reveal-screen {
+  background: var(--felt);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reveal-lists {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reveal-list-row {
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reveal-list-row[data-caller='true'] {
+  background: var(--day-cream);
+  box-shadow: 0 0 0 2px var(--day-base) inset;
+}
+
+.reveal-list-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reveal-name {
+  font-weight: 700;
+  flex: 1;
+}
+
+.reveal-total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: rgba(71, 37, 15, 0.75);
+}
+
+.reveal-cards {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px;
+}
+
+.reveal-cards .card-img-sm {
+  flex-shrink: 0;
+}
+
+.reveal-outcome {
+  font-weight: 700;
+  text-align: center;
+  padding: 4px 0;
+}
+
+.match-over-line {
+  font-weight: 700;
+  text-align: center;
+  padding: 8px 0;
 }
 
 .reveal-table {
@@ -673,6 +1020,10 @@ select {
   text-align: left;
   padding: 8px 6px;
   border-bottom: 1px solid rgba(71, 37, 15, 0.15);
+}
+
+.reveal-table tr[data-caller='true'] {
+  background: var(--day-cream);
 }
 
 /* ---------------------------------------------------------------- rules page */

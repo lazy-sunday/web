@@ -1,12 +1,12 @@
 'use client';
 
-// /r/[code] — join form -> lobby -> placeholder table (real table UI is M3).
+// /r/[code] — join form -> lobby -> real card table (Milestone 3).
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import { CARD_BACK_ASSET, CARD_ASSET, type CardName } from '@lazy-sunday/engine';
+import { useEffect, useState } from 'react';
 import { AVATAR_COLORS } from '../lib/config';
 import { loadIdentity, useGameSocket } from '../lib/useGameSocket';
+import { GameTable } from './GameTable';
 
 export default function RoomClient({ code }: { code: string }) {
   const game = useGameSocket(code);
@@ -40,7 +40,7 @@ export default function RoomClient({ code }: { code: string }) {
 
       {!seated && <JoinForm code={code} onJoin={game.join} disabled={status !== 'open'} />}
       {seated && !inGame && <LobbyView game={game} code={code} />}
-      {seated && inGame && <TablePlaceholder game={game} />}
+      {seated && inGame && <GameTable game={game} />}
     </main>
   );
 }
@@ -280,133 +280,3 @@ function ToggleRow({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Placeholder table view — M3 builds the real one. Shows phase, whose turn,
-// deck/done counts, done-top, your face-down slots, and a raw view JSON block.
-
-function TablePlaceholder({ game }: { game: ReturnType<typeof useGameSocket> }) {
-  const { view, lobby, me, roundNumber } = game;
-  const nameOf = useMemo(() => {
-    const map = new Map(lobby?.players.map((p) => [p.id, p.name]) ?? []);
-    return (id: string | null) => (id ? (map.get(id) ?? id) : '—');
-  }, [lobby]);
-
-  if (!view || !me || !lobby) return null;
-
-  const myView = view.players.find((p) => p.id === me.playerId);
-  const isReveal = view.phase === 'reveal';
-
-  return (
-    <div className="table-view">
-      <div className="phase-banner">
-        <strong>Round {roundNumber}</strong>
-        <span>phase: {view.phase}</span>
-        <span>
-          {view.phase === 'setupPeek'
-            ? 'everyone peeks at 2 of their own cards'
-            : isReveal
-              ? 'lists are face-up'
-              : `turn: ${nameOf(view.currentPlayer)}`}
-        </span>
-        {view.caller && <span>&quot;NOT ME!&quot; called by {nameOf(view.caller)}</span>}
-      </div>
-
-      <div className="pile-row">
-        <div className="pile">
-          <span className="card-face" style={{ backgroundImage: `url(/cards/${CARD_BACK_ASSET})`, backgroundSize: 'cover', color: 'transparent' }}>
-            deck
-          </span>
-          <div className="pile-count">Deck · {view.deckCount}</div>
-        </div>
-        <div className="pile">
-          {view.doneTop ? (
-            <img src={`/cards/${CARD_ASSET[view.doneTop.name as CardName]}`} alt={`DONE top: ${view.doneTop.name}`} />
-          ) : (
-            <span className="card-face">empty</span>
-          )}
-          <div className="pile-count">
-            DONE · {view.doneCount}
-            {view.doneTop ? ` · ${view.doneTop.name}` : ''}
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <h3 style={{ marginBottom: 8 }}>Your list ({myView?.listSize ?? 0} cards, face-down)</h3>
-        <div className="my-list">
-          {Array.from({ length: myView?.listSize ?? 0 }).map((_, i) => (
-            <img key={i} src={`/cards/${CARD_BACK_ASSET}`} alt={`Your face-down card, slot ${i}`} />
-          ))}
-        </div>
-      </div>
-
-      <div className="seat-strip">
-        {view.players.map((p) => (
-          <div key={p.id} className="seat-row" data-current={p.id === view.currentPlayer}>
-            <span
-              className="avatar-dot"
-              style={{ background: lobby.players.find((lp) => lp.id === p.id)?.color ?? '#ccc', width: 22, height: 22 }}
-              aria-hidden
-            />
-            <span style={{ flex: 1 }}>
-              {nameOf(p.id)}
-              {p.id === me.playerId ? ' (you)' : ''}
-            </span>
-            <span>{p.listSize} cards</span>
-            {p.skipNextTurn && <span title="Next turn skipped">busy</span>}
-          </div>
-        ))}
-      </div>
-
-      {isReveal && view.result && (
-        <div>
-          <h3>Round reveal</h3>
-          <table className="reveal-table">
-            <thead>
-              <tr>
-                <th>Player</th>
-                <th>Total</th>
-                <th>Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.keys(view.result.totals).map((pid) => (
-                <tr key={pid}>
-                  <td>
-                    {nameOf(pid)}
-                    {pid === view.result!.caller ? ' (caller)' : ''}
-                  </td>
-                  <td>{view.result!.totals[pid]}</td>
-                  <td>{view.result!.scores[pid]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {lobby.status === 'between-rounds' &&
-            !lobby.matchOver &&
-            (lobby.players.find((p) => p.id === me.playerId)?.isHost ?? false) && (
-              <button
-                type="button"
-                className="btn btn-primary btn-block"
-                style={{ marginTop: 16 }}
-                onClick={() => game.send({ type: 'nextRound' })}
-              >
-                Deal round {roundNumber + 1}
-              </button>
-            )}
-          {lobby.matchOver && (
-            <p style={{ fontWeight: 700, marginTop: 12 }}>
-              Match over — {lobby.winners.map((w) => nameOf(w)).join(' & ')} take
-              {lobby.winners.length === 1 ? 's' : ''} the couch.
-            </p>
-          )}
-        </div>
-      )}
-
-      <details className="debug-details">
-        <summary>Your view (debug)</summary>
-        <pre>{JSON.stringify(view, null, 2)}</pre>
-      </details>
-    </div>
-  );
-}
