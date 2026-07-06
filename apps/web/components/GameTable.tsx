@@ -11,8 +11,10 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CardName, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
 import { usePeeks } from '../lib/usePeeks';
+import { ActionModal } from './ActionModal';
 import { CardBack, CardFace } from './Card';
 import { RevealScreen } from './RevealScreen';
+import { SlapLayer } from './SlapLayer';
 
 type Game = ReturnType<typeof useGameSocket>;
 
@@ -38,6 +40,16 @@ export function GameTable({ game }: { game: Game }) {
     setInFlight(false);
   }, [view?.phase, view?.currentPlayer, view?.pendingAction, view?.myDrawnCard]);
 
+  // "Pick a slot" mode is shared between the pile that started it (DONE pile)
+  // and MyRow (which renders the pickable slots), so it lives up here. Hooks
+  // must all run before any early return (Rules of Hooks), so this is
+  // declared alongside `inFlight` rather than after the phase/null guards.
+  const [pickMode, setPickMode] = useState<'keep' | 'takeFromDone' | null>(null);
+  useEffect(() => {
+    if (!view?.myDrawnCard) setPickMode((m) => (m === 'keep' ? null : m));
+    if (view?.phase !== 'turn') setPickMode((m) => (m === 'takeFromDone' ? null : m));
+  }, [view?.myDrawnCard, view?.phase]);
+
   if (!view || !me || !lobby) return null;
 
   if (view.phase === 'reveal') {
@@ -48,14 +60,6 @@ export function GameTable({ game }: { game: Game }) {
   const isMyTurn = view.currentPlayer === myId;
   const myPlayerView = view.players.find((p) => p.id === myId);
   const opponents = view.players.filter((p) => p.id !== myId);
-
-  // "Pick a slot" mode is shared between the pile that started it (DONE pile)
-  // and MyRow (which renders the pickable slots), so it lives up here.
-  const [pickMode, setPickMode] = useState<'keep' | 'takeFromDone' | null>(null);
-  useEffect(() => {
-    if (!view.myDrawnCard) setPickMode((m) => (m === 'keep' ? null : m));
-    if (view.phase !== 'turn') setPickMode((m) => (m === 'takeFromDone' ? null : m));
-  }, [view.myDrawnCard, view.phase]);
 
   function sendGuarded(fn: () => void) {
     if (inFlight) return;
@@ -118,8 +122,12 @@ export function GameTable({ game }: { game: Game }) {
             onStartKeepPick={() => setPickMode('keep')}
             onCancelPick={() => setPickMode(null)}
           />
+
+          <SlapLayer game={game} nameOf={nameOf} colorOf={colorOf} />
         </>
       )}
+
+      <ActionModal game={game} peeks={peeks} nameOf={nameOf} colorOf={colorOf} />
     </div>
   );
 }
@@ -445,6 +453,7 @@ function MyRow({
             }
           }}
           onDiscard={() => sendGuarded(() => game.sendCommand({ type: 'discardDrawn', withAction: false }))}
+          onPlayAction={() => sendGuarded(() => game.sendCommand({ type: 'discardDrawn', withAction: true }))}
           onCancelPick={onCancelPick}
         />
       )}
@@ -459,6 +468,7 @@ function DrawnCardPanel({
   pickingKeepSlot,
   onKeep,
   onDiscard,
+  onPlayAction,
   onCancelPick,
 }: {
   drawn: { name: string; effort: number; kind: string };
@@ -467,8 +477,10 @@ function DrawnCardPanel({
   pickingKeepSlot: boolean;
   onKeep: () => void;
   onDiscard: () => void;
+  onPlayAction: () => void;
   onCancelPick: () => void;
 }) {
+  const isAction = drawn.kind === 'action';
   return (
     <div className="drawn-card-panel" role="region" aria-label="Drawn card">
       <div className="drawn-card-face">
@@ -487,13 +499,20 @@ function DrawnCardPanel({
             <button type="button" className="btn btn-primary" disabled={inFlight} onClick={onKeep}>
               {myListSize === 0 ? 'Keep (add to list)' : 'Keep…'}
             </button>
-            <button type="button" className="btn btn-ghost" disabled={inFlight} onClick={onDiscard}>
-              Discard
-            </button>
-            {/* TODO(M4): if drawn.kind === 'action', offer "Discard & play action"
-                which sends discardDrawn withAction:true and opens the guided
-                action UI (pick opponent -> pick slot, per action). For M3 we
-                only ever send withAction:false. */}
+            {isAction ? (
+              <>
+                <button type="button" className="btn btn-night" disabled={inFlight} onClick={onPlayAction}>
+                  Play {drawn.name}
+                </button>
+                <button type="button" className="btn btn-ghost" disabled={inFlight} onClick={onDiscard}>
+                  Just discard
+                </button>
+              </>
+            ) : (
+              <button type="button" className="btn btn-ghost" disabled={inFlight} onClick={onDiscard}>
+                Discard
+              </button>
+            )}
           </>
         )}
       </div>
@@ -515,6 +534,11 @@ function useActivityLine(events: Game['events'], nameOf: (id: PlayerId | null) =
   return line;
 }
 
+// Every OTHER player sees "X is playing Snoop…" (name + action) — never a
+// target's face-down card face. Outcome lines below name positions/players
+// (all public per the engine's event shapes) but never a hidden identity;
+// the only card names that appear are ones the rules already make public
+// (DONE-pile discards, slap outcomes, Knock It Out self-discards).
 function describeEvent(event: Game['events'][number], nameOf: (id: PlayerId | null) => string): string | null {
   switch (event.type) {
     case 'drew':
@@ -528,13 +552,41 @@ function describeEvent(event: Game['events'][number], nameOf: (id: PlayerId | nu
     case 'notMeCalled':
       return `${nameOf(event.caller)} called "NOT ME!"`;
     case 'slapCorrect':
-      return `${nameOf(event.player)} slammed "Done it!"`;
+      return event.giftPending
+        ? `${nameOf(event.player)} slammed "Done it!" on ${nameOf(event.owner)}'s card.`
+        : `${nameOf(event.player)} slammed "Done it!"`;
     case 'slapWrong':
       return `${nameOf(event.player)} slapped wrong and drew a penalty.`;
+    case 'slapTooLate':
+      return `${nameOf(event.player)} was a split second too late.`;
     case 'turnSkipped':
       return `${nameOf(event.player)}'s turn was skipped ("I'm Busy").`;
     case 'actionStarted':
       return `${nameOf(event.player)} is playing ${event.action}…`;
+    case 'actionCancelled':
+      return `${nameOf(event.player)} decided not to play ${event.action}.`;
+    case 'checkedTheList':
+      return `${nameOf(event.player)} checked one of their own cards.`;
+    case 'knockItOutPeeked':
+      return `${nameOf(event.player)} is deciding whether to knock a card out…`;
+    case 'knockedOut':
+      return `${nameOf(event.player)} knocked out their "${event.card.name}".`;
+    case 'knockItOutKept':
+      return `${nameOf(event.player)} kept the card after peeking.`;
+    case 'traded':
+      return `${nameOf(event.player)} traded cards with ${nameOf(event.opponentId)}, blind.`;
+    case 'switcherood':
+      return `${nameOf(event.player)} switched a card between ${nameOf(event.a)} and ${nameOf(event.b)}.`;
+    case 'snooped':
+      return `${nameOf(event.player)} snooped on one of ${nameOf(event.targetId)}'s cards.`;
+    case 'notMyJobbed':
+      return `${nameOf(event.player)} moved a card from ${nameOf(event.fromId)} to ${nameOf(event.toId)} — "Not my job!"`;
+    case 'landlordsNoticed':
+      return `${nameOf(event.player)} served a Landlord's Notice on ${nameOf(event.targetId)}.`;
+    case 'imBusied':
+      return `${nameOf(event.player)} declared ${nameOf(event.targetId)} "I'm Busy" — their next turn is skipped.`;
+    case 'giftGiven':
+      return `${nameOf(event.from)} handed ${nameOf(event.to)} a card, face-down.`;
     default:
       return null;
   }

@@ -75,7 +75,14 @@ export function viewFor(state: RoundState, playerId: PlayerId): RoundView {
   };
 }
 
-/** True if this event may be sent to this player. Private events carry `to`. */
+/** Events routed to ONE player only — their `to` field is a socket address, not a
+ *  domain value. Everything else is public. Kept as an explicit allowlist so a
+ *  public event that happens to carry a `to` field (e.g. `giftGiven.to` = the gift
+ *  recipient) is not mistaken for a private message and hidden from bystanders. */
+const PRIVATE_EVENT_TYPES = new Set<string>(['peek', 'drawnCard']);
+
+/** True if this event may be sent to this player. */
 export function eventVisibleTo(event: { type: string; to?: PlayerId }, playerId: PlayerId): boolean {
-  return !('to' in event && event.to !== undefined) || event.to === playerId;
+  if (!PRIVATE_EVENT_TYPES.has(event.type)) return true;
+  return event.to === playerId;
 }
