@@ -8,6 +8,7 @@
   "scripts": {
     "test": "npm run test -w @lazy-sunday/engine",
     "dev:server": "npm run dev -w @lazy-sunday/server",
-    "dev:web": "npm run dev -w @lazy-sunday/web"
+    "dev:web": "npm run dev -w @lazy-sunday/web",
+    "playtest": "tsx apps/server/scripts/playtest-e2e.ts"
   }
 }
