@@ -32,6 +32,39 @@ describe('"NOT ME!" and final turns (§7)', () => {
     expect(afterA.state.result).not.toBeNull();
   });
 
+  it('house-rule instantNotMe: "NOT ME!" reveals immediately, no final turns', () => {
+    const s = makeRound({
+      players: [
+        { id: 'a', list: ['Nap'] },
+        { id: 'b', list: ['Feed the Cat'] },
+        { id: 'c', list: ['Vacuum the Living Room'] },
+      ],
+      deck: ['Fold the Laundry', 'Take Out the Trash'],
+      turn: 1, // b calls
+      instantNotMe: true,
+    });
+    const r = ok(applyCommand(s, { type: 'callNotMe', player: 'b' }));
+    expect(evt(r.events, 'notMeCalled').caller).toBe('b');
+    // straight to reveal — nobody took a final turn
+    expect(r.state.phase).toBe('reveal');
+    expect(r.state.finalTurnQueue).toHaveLength(0);
+    expect(evts(r.events, 'turnStarted')).toHaveLength(0);
+    // scoring is unchanged: b (2) beats a (0)? a=0 lowest, but b is caller → b loses
+    expect(r.state.result!.totals).toEqual({ a: 0, b: 2, c: 6 });
+    expect(r.state.result!.callerWon).toBe(false); // a's 0 strictly beats b's 2
+    expect(r.state.result!.scores).toEqual({ a: 0, b: 50, c: 6 });
+  });
+
+  it('default (instantNotMe off) still grants final turns before reveal', () => {
+    const s = makeRound({
+      players: [{ id: 'a', list: ['Nap'] }, { id: 'b', list: ['Feed the Cat'] }],
+      deck: ['Water the Plants'],
+    });
+    const r = ok(applyCommand(s, { type: 'callNotMe', player: 'a' }));
+    expect(r.state.phase).toBe('turn'); // b's final turn is pending
+    expect(r.state.finalTurnQueue.length + (r.state.players[r.state.turn]!.id === 'b' ? 1 : 0)).toBeGreaterThan(0);
+  });
+
   it('must be called at the START of your turn, instead of taking one', () => {
     const s = makeRound({
       players: [{ id: 'a', list: ['Nap'] }, { id: 'b', list: ['Nap'] }],

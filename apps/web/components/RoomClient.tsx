@@ -178,6 +178,13 @@ function LobbyView({ game, code }: { game: ReturnType<typeof useGameSocket>; cod
           disabled={!iAmHost || lobby.status !== 'lobby'}
           onChange={(v) => game.send({ type: 'setToggle', toggle: 'greatEscape', value: v })}
         />
+        <ToggleRow
+          label="Instant NOT ME!"
+          sub="House rule: end the round on the call, skipping everyone's final turn"
+          checked={lobby.toggles.instantNotMe}
+          disabled={!iAmHost || lobby.status !== 'lobby'}
+          onChange={(v) => game.send({ type: 'setToggle', toggle: 'instantNotMe', value: v })}
+        />
         <div className="toggle-row">
           <span className="toggle-label">
             Turn timeout

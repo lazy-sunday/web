@@ -80,6 +80,9 @@ export interface RoundState {
   result: RoundResult | null;
   /** Mulberry32 state for reshuffles and penalty draws — keeps the round replayable. */
   rngState: number;
+  /** House-rule (default false): "NOT ME!" reveals immediately, skipping the
+   *  §7 final turns. Off = the official rules. */
+  instantNotMe: boolean;
 }
 
 // ---------------------------------------------------------------------------

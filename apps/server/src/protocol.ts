@@ -27,6 +27,8 @@ export interface LobbyPlayer {
 export interface RoomToggles {
   matchTo100: boolean;
   greatEscape: boolean;
+  /** House-rule: "NOT ME!" reveals immediately, skipping §7 final turns. */
+  instantNotMe: boolean;
   /** Turn timeout in seconds (default 45). */
   turnTimeoutSeconds: number;
 }
@@ -58,7 +60,7 @@ export type ToggleKey = keyof RoomToggles;
 
 export type ClientMessage =
   | { type: 'join'; roomCode: string; name: string; color: string; token?: string }
-  | { type: 'setToggle'; toggle: 'matchTo100' | 'greatEscape'; value: boolean }
+  | { type: 'setToggle'; toggle: 'matchTo100' | 'greatEscape' | 'instantNotMe'; value: boolean }
   | { type: 'setToggle'; toggle: 'turnTimeoutSeconds'; value: number }
   | { type: 'startGame' }
   | { type: 'command'; command: ClientCommand }

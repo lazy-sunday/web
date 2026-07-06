@@ -218,7 +218,7 @@ function handleSetToggle(room: Room, player: RoomPlayer, msg: Extract<ClientMess
     sendTo(player, { type: 'error', code: 'notHost', message: 'only the host can change settings' });
     return;
   }
-  if (msg.toggle === 'matchTo100' || msg.toggle === 'greatEscape') {
+  if (msg.toggle === 'matchTo100' || msg.toggle === 'greatEscape' || msg.toggle === 'instantNotMe') {
     if (room.status !== 'lobby') {
       sendTo(player, { type: 'error', code: 'wrongStatus', message: 'rule toggles lock once the game starts' });
       return;
@@ -292,6 +292,7 @@ function startRound(room: Room, roundNumber: number): void {
     // Round k starts at seat (k-1) mod nPlayers — the deal rotates.
     startingPlayer: startingSeatForRound(roundNumber, seatOrder.length),
     seed: newSeed(),
+    instantNotMe: room.toggles.instantNotMe,
   });
   room.status = 'playing';
   broadcastLobby(room);

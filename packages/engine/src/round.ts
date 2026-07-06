@@ -20,6 +20,10 @@ export interface RoundConfig {
   /** Seat index of the player who takes the first turn. */
   startingPlayer: number;
   seed: number;
+  /** House-rule opt-in (default false): when true, "NOT ME!" reveals the round
+   *  IMMEDIATELY with no final turns. The official rules (§7 — every other
+   *  player takes exactly one final turn) are the default and are unchanged. */
+  instantNotMe?: boolean;
 }
 
 const CARDS_PER_PLAYER = 6; // §3.1
@@ -59,6 +63,7 @@ export function createRound(config: RoundConfig): RoundState {
     finalTurnQueue: [],
     result: null,
     rngState: shuffled.state,
+    instantNotMe: config.instantNotMe ?? false,
   };
 }
 
@@ -225,12 +230,17 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
       // §7: call at the START of your turn, instead of taking one.
       if (state.caller !== null) return fail('alreadyCalled', '"NOT ME!" was already called this round');
       state.caller = player.id;
+      events.push({ type: 'notMeCalled', caller: player.id });
+      if (state.instantNotMe) {
+        // House-rule: no final turns — reveal now.
+        reveal(state, events);
+        return { ok: true, state, events };
+      }
       // §7: every OTHER player then gets exactly ONE final turn, in seat order.
       const n = state.players.length;
       const queue: PlayerId[] = [];
       for (let i = 1; i < n; i++) queue.push(state.players[(state.turn + i) % n]!.id);
       state.finalTurnQueue = queue;
-      events.push({ type: 'notMeCalled', caller: player.id });
       state.phase = 'turn';
       advanceToNextFinalTurn(state, events);
       return { ok: true, state, events };

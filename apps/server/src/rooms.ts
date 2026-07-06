@@ -67,6 +67,7 @@ export function createRoom(): Room {
     toggles: {
       matchTo100: false,
       greatEscape: false,
+      instantNotMe: false,
       turnTimeoutSeconds: DEFAULT_TURN_TIMEOUT_SECONDS,
     },
     session: null,

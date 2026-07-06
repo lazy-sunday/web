@@ -43,6 +43,7 @@ export interface MakeRoundOpts {
   caller?: PlayerId;
   finalTurnQueue?: PlayerId[];
   phase?: RoundState['phase'];
+  instantNotMe?: boolean;
 }
 
 export function makeRound(opts: MakeRoundOpts, pool = new Pool()): RoundState {
@@ -67,6 +68,7 @@ export function makeRound(opts: MakeRoundOpts, pool = new Pool()): RoundState {
     finalTurnQueue: opts.finalTurnQueue ?? [],
     result: null,
     rngState: 12345,
+    instantNotMe: opts.instantNotMe ?? false,
   };
 }
 
