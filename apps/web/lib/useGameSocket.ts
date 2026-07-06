@@ -8,7 +8,7 @@
 // we keep the event log around for the table UI (M3) to build its peek memory.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { EngineEvent, PlayerId, RoundView } from '@lazy-sunday/engine';
+import type { EngineEvent, PlayerId, RoundView, SessionEvent } from '@lazy-sunday/engine';
 import type {
   ClientCommand,
   ClientMessage,
@@ -24,6 +24,15 @@ export interface StoredIdentity {
   color: string;
 }
 
+/** A player's emoji reaction, timestamped client-side so the UI can float
+ *  and expire it near their seat without needing a server-side TTL. */
+export interface ReactionEvent {
+  id: number;
+  player: PlayerId;
+  emoji: string;
+  at: number;
+}
+
 export interface GameSocket {
   /** Raw socket status. */
   status: 'connecting' | 'open' | 'closed';
@@ -34,6 +43,12 @@ export interface GameSocket {
   roundNumber: number;
   /** Filtered engine events, newest last (capped). */
   events: EngineEvent[];
+  /** Session-level events (Great Escape, match over), newest last (capped). */
+  sessionEvents: SessionEvent[];
+  /** The most recent session event, if any — convenient for ceremony banners. */
+  latestSessionEvent: SessionEvent | null;
+  /** Incoming emoji reactions, newest last (capped, client-timestamped). */
+  reactions: ReactionEvent[];
   lastError: { code: string; message: string } | null;
   /** Join fresh with a chosen name + color (also persists identity for rejoin). */
   join: (name: string, color: string) => void;
@@ -41,10 +56,15 @@ export interface GameSocket {
   send: (msg: ClientMessage) => void;
   /** Send an engine command (server stamps our player id). */
   sendCommand: (command: ClientCommand) => void;
+  /** Send an emoji reaction (server broadcasts it back as `reaction`). */
+  sendReaction: (emoji: string) => void;
   clearError: () => void;
 }
 
 const MAX_EVENTS = 200;
+const MAX_SESSION_EVENTS = 20;
+const MAX_REACTIONS = 30;
+let reactionIdSeq = 0;
 
 function storageKey(roomCode: string): string {
   return `lazy-sunday:${roomCode.toUpperCase()}`;
@@ -75,6 +95,8 @@ export function useGameSocket(roomCode: string): GameSocket {
   const [view, setView] = useState<RoundView | null>(null);
   const [roundNumber, setRoundNumber] = useState(0);
   const [events, setEvents] = useState<EngineEvent[]>([]);
+  const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
+  const [reactions, setReactions] = useState<ReactionEvent[]>([]);
   const [lastError, setLastError] = useState<{ code: string; message: string } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -157,7 +179,18 @@ export function useGameSocket(roomCode: string): GameSocket {
             setLastError({ code: String(msg.code), message: msg.message });
             break;
           case 'sessionEvent':
+            setSessionEvents((prev) => {
+              const next = [...prev, msg.event];
+              return next.length > MAX_SESSION_EVENTS ? next.slice(next.length - MAX_SESSION_EVENTS) : next;
+            });
+            break;
           case 'reaction':
+            setReactions((prev) => {
+              reactionIdSeq += 1;
+              const next = [...prev, { id: reactionIdSeq, player: msg.player, emoji: msg.emoji, at: Date.now() }];
+              return next.length > MAX_REACTIONS ? next.slice(next.length - MAX_REACTIONS) : next;
+            });
+            break;
           case 'pong':
             break;
         }
@@ -195,7 +228,39 @@ export function useGameSocket(roomCode: string): GameSocket {
     [rawSend],
   );
 
+  // Client-side politeness limit: 1 reaction/sec. The server doesn't need to
+  // police this (reactions are cheap and non-authoritative), but spamming
+  // emoji at your friends deserves at least a token speed bump.
+  const lastReactionAt = useRef(0);
+  const sendReaction = useCallback(
+    (emoji: string) => {
+      const now = Date.now();
+      if (now - lastReactionAt.current < 1000) return;
+      lastReactionAt.current = now;
+      rawSend({ type: 'reaction', emoji });
+    },
+    [rawSend],
+  );
+
   const clearError = useCallback(() => setLastError(null), []);
 
-  return { status, me, lobby, view, roundNumber, events, lastError, join, send: rawSend, sendCommand, clearError };
+  const latestSessionEvent = sessionEvents.length > 0 ? sessionEvents[sessionEvents.length - 1]! : null;
+
+  return {
+    status,
+    me,
+    lobby,
+    view,
+    roundNumber,
+    events,
+    sessionEvents,
+    latestSessionEvent,
+    reactions,
+    lastError,
+    join,
+    send: rawSend,
+    sendCommand,
+    sendReaction,
+    clearError,
+  };
 }

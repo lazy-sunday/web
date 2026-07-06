@@ -31,6 +31,9 @@ interface OptimisticSlap {
   outcome: 'pending' | 'correct' | 'wrong' | 'tooLate';
 }
 
+// Sound for slapCorrect/slapWrong is triggered centrally by useGameSounds
+// (keyed off the same event stream this component reconciles against), so
+// this component stays focused on the optimistic UI + arbitration reconcile.
 export function SlapLayer({
   game,
   nameOf,

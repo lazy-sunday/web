@@ -7,20 +7,27 @@
 // renders from the card-back SVG; the only faces ever shown are the DONE
 // top (always public) and whatever `usePeeks`/`myDrawnCard` grants me.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CardName, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
 import { usePeeks } from '../lib/usePeeks';
+import { useSound } from '../lib/useSound';
+import { useGameSounds } from '../lib/useGameSounds';
 import { ActionModal } from './ActionModal';
 import { CardBack, CardFace } from './Card';
+import { FloatingReactions, ReactionBar } from './ReactionBar';
 import { RevealScreen } from './RevealScreen';
 import { SlapLayer } from './SlapLayer';
+import { SoundToggle } from './SoundToggle';
+import { HouseRuleBadges } from './HouseRuleBadges';
 
 type Game = ReturnType<typeof useGameSocket>;
 
 export function GameTable({ game }: { game: Game }) {
   const { view, lobby, me, roundNumber, events } = game;
   const peeks = usePeeks(events, me?.playerId ?? null, view?.phase ?? null);
+  const sound = useSound();
+  useGameSounds(events, me?.playerId ?? null, sound);
 
   const nameOf = useMemo(() => {
     const map = new Map(lobby?.players.map((p) => [p.id, p.name]) ?? []);
@@ -53,7 +60,16 @@ export function GameTable({ game }: { game: Game }) {
   if (!view || !me || !lobby) return null;
 
   if (view.phase === 'reveal') {
-    return <RevealScreen game={game} nameOf={nameOf} colorOf={colorOf} />;
+    return (
+      <div className="table-felt">
+        <RevealScreen game={game} nameOf={nameOf} colorOf={colorOf} sound={sound} />
+        <FloatingReactions reactions={game.reactions} nameOf={nameOf} />
+        <div className="table-footer-controls">
+          <SoundToggle sound={sound} className="table-sound-toggle" />
+          <ReactionBar onSend={game.sendReaction} />
+        </div>
+      </div>
+    );
   }
 
   const myId = me.playerId;
@@ -80,6 +96,7 @@ export function GameTable({ game }: { game: Game }) {
   return (
     <div className="table-felt">
       <TableBanner view={view} roundNumber={roundNumber} nameOf={nameOf} activityLine={activityLine} />
+      <HouseRuleBadges toggles={lobby.toggles} />
 
       {view.phase === 'setupPeek' ? (
         <SetupPeekPanel game={game} peeks={peeks} inFlight={inFlight} sendGuarded={sendGuarded} />
@@ -128,6 +145,12 @@ export function GameTable({ game }: { game: Game }) {
       )}
 
       <ActionModal game={game} peeks={peeks} nameOf={nameOf} colorOf={colorOf} />
+
+      <FloatingReactions reactions={game.reactions} nameOf={nameOf} />
+      <div className="table-footer-controls">
+        <SoundToggle sound={sound} className="table-sound-toggle" />
+        <ReactionBar onSend={game.sendReaction} />
+      </div>
     </div>
   );
 }
@@ -316,6 +339,7 @@ function CenterPiles({
   onStartTakeFromDone: () => void;
 }) {
   const { view } = game;
+  const justChanged = useJustChanged(view?.doneTop?.id ?? null);
   if (!view) return null;
   const canAct = isMyTurn && view.phase === 'turn' && pickMode === null;
 
@@ -335,6 +359,7 @@ function CenterPiles({
       <button
         type="button"
         className="pile-btn done-pile"
+        data-just-changed={justChanged}
         disabled={!canAct || inFlight || !view.doneTop || view.players.find((p) => p.id === game.me?.playerId)?.listSize === 0}
         aria-label={
           view.doneTop
@@ -399,8 +424,9 @@ function MyRow({
   onStartKeepPick: () => void;
   onCancelPick: () => void;
 }) {
-  const { view, me } = game;
+  const { view, me, events } = game;
   const drawn = view?.myDrawnCard ?? null;
+  const justPlacedSlot = useJustPlacedSlot(events, me?.playerId ?? null);
 
   if (!view || !me) return null;
 
@@ -424,6 +450,7 @@ function MyRow({
               type="button"
               className="slot-btn slot-btn-lg"
               data-pickable={pickable}
+              data-just-placed={justPlacedSlot === i}
               disabled={!pickable || inFlight}
               aria-label={
                 peeked
@@ -518,6 +545,56 @@ function DrawnCardPanel({
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Animation triggers (M5 item 6): small "did this just change" flags derived
+// from view/event diffs, exposed as short-lived data-attributes so CSS
+// keyframes (transform/opacity only) can play without any layout shift.
+
+/** True for a brief window right after `value` changes identity — drives the
+ *  DONE pile's "discard-drop" flash on every top-card change (discard, take-
+ *  from-done, slap resolution). */
+function useJustChanged(value: string | null): boolean {
+  const [flag, setFlag] = useState(false);
+  const prev = useRef(value);
+  useEffect(() => {
+    if (prev.current !== value) {
+      prev.current = value;
+      if (value !== null) {
+        setFlag(true);
+        const t = setTimeout(() => setFlag(false), 220);
+        return () => clearTimeout(t);
+      }
+    }
+    return undefined;
+  }, [value]);
+  return flag;
+}
+
+/** The slot index I most recently placed a card into via keep/take-from-DONE,
+ *  held for one brief animation window then cleared. Landlord's Notice can
+ *  also place a card into my list unseen — we don't animate that one slot
+ *  specially since the identity is never public, but the list-size change
+ *  itself is still visible via the row re-rendering. */
+function useJustPlacedSlot(events: Game['events'], myId: PlayerId | null): number | null {
+  const [slot, setSlot] = useState<number | null>(null);
+  const seenCount = useRef(0);
+  useEffect(() => {
+    if (seenCount.current > events.length) seenCount.current = 0;
+    const newEvents = events.slice(seenCount.current);
+    seenCount.current = events.length;
+    if (newEvents.length === 0 || !myId) return;
+    for (const ev of newEvents) {
+      if ((ev.type === 'kept' || ev.type === 'tookFromDone') && ev.player === myId) {
+        setSlot(ev.slot);
+        const t = setTimeout(() => setSlot(null), 240);
+        return () => clearTimeout(t);
+      }
+    }
+    return undefined;
+  }, [events, myId]);
+  return slot;
 }
 
 // ---------------------------------------------------------------------------

@@ -1454,3 +1454,474 @@ select {
   margin-bottom: 16px;
   font-weight: 700;
 }
+
+/* ================================================================== */
+/* Milestone 5 — polish: reveal ceremony, session/house-rule surfaces,
+   sound + reactions, and an animation pass. Reuses existing variables
+   only; no new colors are introduced anywhere below. */
+/* ================================================================== */
+
+/* -- house rule badges -- */
+
+.house-rule-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.house-rule-badge {
+  background: var(--day-cream);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 5px 12px;
+  letter-spacing: 0.03em;
+  box-shadow: 0 0 0 2px var(--day-base) inset;
+}
+
+/* -- reveal flip-and-count ceremony -- */
+
+.reveal-flip-slot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 52px;
+  perspective: 600px;
+}
+
+.reveal-flip-slot .card-img {
+  transform: rotateY(90deg) scale(0.9);
+  opacity: 0;
+  transition: transform 260ms ease-out, opacity 200ms ease-out;
+}
+
+.reveal-flip-slot[data-flipped='true'] .card-img {
+  transform: rotateY(0deg) scale(1);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-flip-slot .card-img {
+    transition: none;
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.reveal-total {
+  font-variant-numeric: tabular-nums;
+}
+
+.reveal-outcome[data-emphasis='win'] {
+  color: var(--ok);
+  font-size: 17px;
+}
+
+.reveal-outcome[data-emphasis='lose'] {
+  color: var(--danger);
+  font-size: 17px;
+}
+
+/* -- Great Escape ceremony banner -- */
+
+.great-escape-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--night-panel);
+  color: var(--night-accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  text-align: center;
+  animation: pop-in 260ms ease-out;
+}
+
+.great-escape-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--day-sun);
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .great-escape-banner {
+    animation: none;
+  }
+}
+
+/* -- cumulative session scoreboard -- */
+
+.scoreboard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.standings li[data-leader='true'] {
+  background: var(--day-cream);
+  border-radius: 8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  box-shadow: 0 0 0 2px var(--day-base) inset;
+  font-weight: 700;
+}
+
+/* -- match-over screen -- */
+
+.match-over-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  background: var(--night-panel);
+  color: var(--night-accent);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  text-align: center;
+  animation: pop-in 260ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-over-screen {
+    animation: none;
+  }
+}
+
+.match-over-title {
+  font-size: 26px;
+  color: var(--day-sun);
+}
+
+.match-over-line {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.final-standings li {
+  color: var(--night-accent);
+  border-bottom-color: rgba(255, 233, 184, 0.2);
+}
+
+.final-standings li[data-winner='true'] {
+  background: rgba(255, 233, 184, 0.15);
+  box-shadow: 0 0 0 2px var(--day-sun) inset;
+  border-radius: 8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  color: var(--day-sun);
+}
+
+/* -- sound toggle + reaction bar mounted on the table -- */
+
+.table-footer-controls {
+  position: fixed;
+  left: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 44;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+}
+
+.sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--night-base);
+  color: var(--night-accent);
+  box-shadow: var(--shadow-card);
+  transition: transform 150ms ease-out, background 150ms ease-out;
+}
+
+.sound-toggle:hover {
+  background: var(--night-panel);
+}
+
+.sound-toggle:active {
+  transform: scale(0.92);
+}
+
+.table-sound-toggle {
+  position: static;
+}
+
+.reaction-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  padding: 4px;
+  box-shadow: var(--shadow-card);
+  overflow-x: auto;
+  max-width: calc(100vw - 90px);
+}
+
+.reaction-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  transition: transform 150ms ease-out, background 150ms ease-out;
+}
+
+.reaction-btn:hover {
+  background: var(--day-cream);
+}
+
+.reaction-btn:active {
+  transform: scale(0.85);
+}
+
+.floating-reactions {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 43;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.floating-reaction {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--night-panel);
+  color: var(--night-accent);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: var(--shadow-card);
+  animation: float-up 2200ms ease-out forwards;
+}
+
+.floating-reaction-emoji {
+  font-size: 18px;
+}
+
+@keyframes float-up {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translateY(-6px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-reaction {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* the reaction bar + sound toggle sit left of the slam button; give the
+   slam button's own reserved space on the right so they never overlap on
+   narrow viewports (375px: 44 toggle + 10 gap + reactions, capped width). */
+@media (max-width: 480px) {
+  .table-footer-controls {
+    right: 92px;
+    max-width: none;
+  }
+
+  .reaction-bar {
+    max-width: none;
+    flex: 1;
+  }
+}
+
+/* -- animation pass: draws, keep/swap, slaps beyond the M4 basic flash -- */
+
+/* Draw: card rises off the deck into the hand panel. Elevates via transform/
+   opacity only, ease-out enter, ~220ms — already close to spec via
+   .drawn-anim; strengthen the lift + add a brief shadow pop for depth. */
+.drawn-anim {
+  animation: draw-enter 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes draw-enter {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawn-anim {
+    animation: none;
+  }
+}
+
+/* Keep/swap: the slot that just received a card gets a brief settle-in;
+   the slot whose old occupant just left (now empty face-down) gets a quick
+   "replaced" pulse toward the DONE pile direction (downward, subtle). Both
+   are interruptible re-triggerable keyframes since React remounts the
+   affected slot button on slot-index churn is avoided — instead we key off
+   a short-lived data attribute set by the caller for one animation frame. */
+.slot-btn[data-just-placed='true'] {
+  animation: slot-settle 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slot-settle {
+  from {
+    opacity: 0.4;
+    transform: scale(1.12);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-btn[data-just-placed='true'] {
+    animation: none;
+  }
+}
+
+/* Discard: the DONE pile top gets a quick drop-in when its top card changes
+   (discard, take-from-done replace, slap resolution). */
+.done-pile[data-just-changed='true'] .card-img {
+  animation: discard-drop 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes discard-drop {
+  from {
+    opacity: 0.3;
+    transform: translateY(-14px) scale(1.05);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .done-pile[data-just-changed='true'] .card-img {
+    animation: none;
+  }
+}
+
+/* Slaps: sharper enter (ease-out) + a distinct, faster exit (ease-in, ~65%
+   of the enter duration) instead of relying on unmount-with-no-exit. */
+.slap-flash {
+  animation: slap-enter 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slap-flash[data-outcome='correct'],
+.slap-flash[data-outcome='wrong'],
+.slap-flash[data-outcome='tooLate'] {
+  animation: slap-settle 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slap-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+@keyframes slap-settle {
+  0% {
+    opacity: 0.6;
+    transform: translateX(-50%) scale(1.18);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slap-flash {
+    animation: none;
+  }
+}
+
+/* -- mobile one-handed pass (375x812 baseline) -- */
+
+@media (max-width: 480px) {
+  .shell {
+    padding: 16px 10px 40px;
+  }
+
+  .table-felt {
+    padding: 12px 8px 88px; /* clears the fixed slam button + footer controls */
+  }
+
+  .my-row {
+    padding: 10px 8px;
+  }
+
+  .slam-btn {
+    right: 12px;
+    padding: 12px 18px;
+    font-size: 16px;
+  }
+
+  .drawn-card-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .drawn-card-face {
+    width: 72px;
+    align-self: center;
+  }
+}
+
+/* Landscape phones: the fixed footer controls and slam button must not eat
+   into the (short) viewport height — pull them tighter to the edges. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .slam-btn {
+    bottom: max(10px, env(safe-area-inset-bottom));
+    padding: 10px 16px;
+    min-height: 48px;
+  }
+
+  .table-footer-controls {
+    bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .table-felt {
+    padding-bottom: 72px;
+  }
+}
