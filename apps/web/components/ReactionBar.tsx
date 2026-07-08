@@ -6,7 +6,8 @@
 // 1/sec in useGameSocket). Incoming reactions float up briefly near the
 // sending player's seat via <FloatingReactions>.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { PlayerId } from '@lazy-sunday/engine';
 import type { ReactionEvent } from '../lib/useGameSocket';
 
@@ -43,23 +44,38 @@ export function FloatingReactions({
   nameOf: (id: PlayerId | null) => string;
 }) {
   const [visible, setVisible] = useState<ReactionEvent[]>([]);
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
     const last = reactions[reactions.length - 1];
     if (!last) return;
-    setVisible((prev) => [...prev, last]);
+    if (timers.current.has(last.id)) return;
+    setVisible((prev) => (prev.some((r) => r.id === last.id) ? prev : [...prev, last]));
     const t = setTimeout(() => {
       setVisible((prev) => prev.filter((r) => r.id !== last.id));
+      timers.current.delete(last.id);
     }, FLOAT_MS);
-    return () => clearTimeout(t);
+    timers.current.set(last.id, t);
   }, [reactions]);
+
+  useEffect(() => {
+    const pendingTimers = timers.current;
+    return () => {
+      pendingTimers.forEach(clearTimeout);
+      pendingTimers.clear();
+    };
+  }, []);
 
   if (visible.length === 0) return null;
 
   return (
     <div className="floating-reactions" aria-live="polite">
-      {visible.map((r) => (
-        <span key={r.id} className="floating-reaction">
+      {visible.map((r, index) => (
+        <span
+          key={r.id}
+          className="floating-reaction"
+          style={{ '--reaction-index': index } as CSSProperties}
+        >
           <span className="floating-reaction-emoji" aria-hidden>
             {r.emoji}
           </span>

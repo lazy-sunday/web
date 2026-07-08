@@ -1740,52 +1740,62 @@ select {
 }
 
 .floating-reactions {
+  --reaction-step: 42px;
   position: fixed;
   top: max(16px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
   z-index: 43;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  width: min(84vw, 420px);
   pointer-events: none;
 }
 
 .floating-reaction {
+  position: absolute;
+  top: calc(var(--reaction-index) * var(--reaction-step));
+  left: 50%;
   display: flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
   background: var(--night-panel);
   color: var(--night-accent);
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
   box-shadow: var(--shadow-card);
-  animation: float-up 2200ms ease-out forwards;
+  transition: top 220ms ease-out;
+  animation: reaction-float 2200ms ease-out forwards;
 }
 
 .floating-reaction-emoji {
   font-size: 18px;
 }
 
-@keyframes float-up {
+.floating-reaction-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes reaction-float {
   0% {
     opacity: 0;
-    transform: translateY(6px) scale(0.9);
+    transform: translateX(-50%) translateY(6px) scale(0.9);
   }
   12% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateX(-50%) translateY(0) scale(1);
   }
   75% {
     opacity: 1;
-    transform: translateY(-6px) scale(1);
+    transform: translateX(-50%) translateY(-6px) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translateY(-18px) scale(0.96);
+    transform: translateX(-50%) translateY(-18px) scale(0.96);
   }
 }
 
@@ -1793,6 +1803,8 @@ select {
   .floating-reaction {
     animation: none;
     opacity: 1;
+    transform: translateX(-50%);
+    transition: none;
   }
 }
 
