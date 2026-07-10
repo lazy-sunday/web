@@ -54,6 +54,7 @@ export function SlapLayer({
   const seenCount = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const slapSending = useRef(false);
 
   const myId = me?.playerId ?? null;
 
@@ -125,11 +126,23 @@ export function SlapLayer({
     };
   }, []);
 
-  // Any table change that can make a selected target stale clears the pending
-  // confirmation before a command can be sent with an old DONE top.
+  // A changed DONE top invalidates the match the player was confirming.
   useEffect(() => {
     onClearTarget();
-  }, [view?.doneTop?.id, view?.phase, view?.pendingGift, onClearTarget]);
+  }, [view?.doneTop?.id, onClearTarget]);
+
+  const slapSelectionLocked = Boolean(view && (view.phase === 'action' || view.pendingGift !== null));
+
+  // Entering an action or gift flow locks slaps. Playable phase changes such as
+  // turn -> drawn intentionally leave an open confirmation alone.
+  useEffect(() => {
+    if (slapSelectionLocked) onClearTarget();
+  }, [slapSelectionLocked, onClearTarget]);
+
+  // A newly selected target starts a fresh confirmation/send attempt.
+  useEffect(() => {
+    if (selectedTarget) slapSending.current = false;
+  }, [selectedTarget]);
 
   // Escape always closes the confirmation (it never sent anything yet, so
   // there's nothing to roll back).
@@ -157,11 +170,21 @@ export function SlapLayer({
   );
 
   function fireSlap() {
-    if (!selectedTarget || !selectedIsValid || !canSlap) return;
+    const expectedTopId = view?.doneTop?.id;
+    if (
+      !selectedTarget ||
+      !selectedIsValid ||
+      !canSlap ||
+      expectedTopId === undefined ||
+      slapSending.current
+    ) {
+      return;
+    }
+    slapSending.current = true;
     const { owner, slot } = selectedTarget;
     onClearTarget();
     setOptimistic({ owner, slot, outcome: 'pending' });
-    game.sendCommand({ type: 'slap', owner, slot, expectedTopId: view!.doneTop?.id });
+    game.sendCommand({ type: 'slap', owner, slot, expectedTopId });
   }
 
   return (
