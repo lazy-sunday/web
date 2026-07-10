@@ -723,6 +723,17 @@ select {
 .opp-slot {
   flex-shrink: 0;
   width: 44px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 8px;
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, opacity 150ms ease-out;
+  cursor: pointer;
+}
+
+.opp-slot:disabled {
+  cursor: default;
 }
 
 /* -- center piles -- */
@@ -890,6 +901,24 @@ select {
 .slot-btn[data-pickable='true'] {
   box-shadow: 0 0 0 3px var(--night-moon);
   animation: pickable-pulse 1.4s ease-in-out infinite;
+}
+
+.slot-btn[data-slap-pickable='true'],
+.opp-slot[data-slap-pickable='true'] {
+  box-shadow: 0 0 0 2px rgba(192, 74, 53, 0.42);
+}
+
+.slot-btn[data-slap-pickable='true']:hover,
+.opp-slot[data-slap-pickable='true']:hover,
+.slot-btn[data-slap-pickable='true']:focus-visible,
+.opp-slot[data-slap-pickable='true']:focus-visible {
+  box-shadow: 0 0 0 3px var(--danger);
+}
+
+.slot-btn[data-slap-selected='true'],
+.opp-slot[data-slap-selected='true'] {
+  box-shadow: 0 0 0 3px var(--danger), 0 8px 18px rgba(192, 74, 53, 0.28);
+  transform: translateY(-4px);
 }
 
 .slot-btn:disabled:not([data-pickable='true']) {
@@ -1074,7 +1103,7 @@ select {
 }
 
 .action-modal,
-.slap-picker {
+.slap-confirm {
   background: var(--felt);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
@@ -1163,134 +1192,66 @@ select {
   background: rgba(255, 233, 184, 0.1);
 }
 
-.player-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.player-pick-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 8px 14px;
-  border-radius: var(--radius);
-  border: 2px solid rgba(255, 233, 184, 0.25);
-  background: rgba(255, 255, 255, 0.06);
-  color: inherit;
-  font-weight: 700;
-  transition: transform 150ms ease-out, border-color 150ms ease-out, background 150ms ease-out;
-}
-
-.action-modal:not(.night) .player-pick-btn {
-  border-color: rgba(71, 37, 15, 0.2);
-  background: #fff;
-}
-
-.player-pick-btn:not(:disabled):hover {
-  border-color: var(--night-moon);
-}
-
-.player-pick-btn:not(:disabled):active {
-  transform: scale(0.98);
-}
-
-.player-pick-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.player-pick-name {
-  flex: 1;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .slot-picker-row {
   background: rgba(255, 255, 255, 0.06);
   border-radius: var(--radius);
 }
 
-/* -- slam button ("DONE IT!") -- */
+/* -- "Done it!" card-first confirmation -- */
 
-.slam-btn {
-  position: fixed;
-  right: 16px;
-  bottom: max(16px, env(safe-area-inset-bottom));
-  z-index: 45;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 56px;
-  padding: 14px 22px;
-  border: none;
-  border-radius: 999px;
-  background: var(--danger);
-  color: #fff;
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25), 0 10px 24px rgba(192, 74, 53, 0.4);
-  transition: transform 120ms ease-out, box-shadow 120ms ease-out, background 150ms ease-out, opacity 150ms ease-out;
-}
-
-.slam-btn:not(:disabled):active {
-  transform: scale(0.94);
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25), 0 4px 12px rgba(192, 74, 53, 0.4);
-}
-
-.slam-btn:disabled {
-  background: rgba(71, 37, 15, 0.3);
-  box-shadow: none;
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.slam-btn[data-locked='true'] {
-  background: rgba(71, 37, 15, 0.3);
-}
-
-.slam-lock-hint {
-  position: fixed;
-  right: 16px;
-  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 60px);
-  z-index: 45;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink);
-  background: var(--chrome);
-  border-radius: 999px;
-  padding: 4px 10px;
-  box-shadow: var(--shadow-card);
-  max-width: 180px;
-  text-align: right;
-}
-
-.slap-picker {
+.slap-confirm {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-.slap-target {
+.slap-confirm-targets {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.slap-confirm-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
-.slap-target .card-img-lg {
+.slap-confirm-card .card-img-lg {
   width: 84px;
 }
 
-.slap-target-label {
+.slap-confirm-card span {
   font-weight: 700;
   font-size: 13px;
   color: rgba(71, 37, 15, 0.7);
+  text-align: center;
+}
+
+.slap-confirm-arrow {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.slap-confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 420px) {
+  .slap-confirm-targets {
+    gap: 8px;
+  }
+
+  .slap-confirm-card .card-img-lg {
+    width: 72px;
+  }
 }
 
 /* -- optimistic slap flash + toasts -- */
@@ -1776,52 +1737,62 @@ select {
 }
 
 .floating-reactions {
+  --reaction-step: 42px;
   position: fixed;
   top: max(16px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
   z-index: 43;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  width: min(84vw, 420px);
   pointer-events: none;
 }
 
 .floating-reaction {
+  position: absolute;
+  top: calc(var(--reaction-index) * var(--reaction-step));
+  left: 50%;
   display: flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
   background: var(--night-panel);
   color: var(--night-accent);
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
   box-shadow: var(--shadow-card);
-  animation: float-up 2200ms ease-out forwards;
+  transition: top 220ms ease-out;
+  animation: reaction-float 2200ms ease-out forwards;
 }
 
 .floating-reaction-emoji {
   font-size: 18px;
 }
 
-@keyframes float-up {
+.floating-reaction-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes reaction-float {
   0% {
     opacity: 0;
-    transform: translateY(6px) scale(0.9);
+    transform: translateX(-50%) translateY(6px) scale(0.9);
   }
   12% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateX(-50%) translateY(0) scale(1);
   }
   75% {
     opacity: 1;
-    transform: translateY(-6px) scale(1);
+    transform: translateX(-50%) translateY(-6px) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translateY(-18px) scale(0.96);
+    transform: translateX(-50%) translateY(-18px) scale(0.96);
   }
 }
 
@@ -1829,6 +1800,8 @@ select {
   .floating-reaction {
     animation: none;
     opacity: 1;
+    transform: translateX(-50%);
+    transition: none;
   }
 }
 

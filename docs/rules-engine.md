@@ -1,0 +1,104 @@
+# Rules Engine
+
+The rules engine is in `packages/engine`. It is the authority for game rules, legal commands, state transitions, event generation, visibility helpers, and session scoring.
+
+The engine implements [lazy-sunday-rules-v1.md](../lazy-sunday-rules-v1.md). Section 9 is treated as the edge-case spec.
+
+## Public API
+
+The engine exports from `src/index.ts`. The core entry points are:
+
+- `createRound(config)`: creates a new shuffled round.
+- `applyCommand(state, command)`: applies one player or server command and returns either a new state plus events or a typed error.
+- `viewFor(state, playerId)`: builds a redacted `RoundView` for one player.
+- `eventVisibleTo(event, playerId)`: says whether one player may receive an event.
+- `createSession(players, options)`: creates cumulative match scoring state.
+- `applyRoundScores(session, roundScores)`: applies revealed round scores to the session.
+- `standings(session)`: returns lowest-score-first standings.
+
+## State Model
+
+`RoundState` tracks:
+
+- Player order and each player's face-down list.
+- Deck and DONE pile, with the top card represented by the last array element.
+- Current phase: `setupPeek`, `turn`, `drawn`, `action`, or `reveal`.
+- Current turn index.
+- A private drawn card during `drawn`.
+- Pending action or pending gift obligations.
+- Caller and final-turn queue after "NOT ME!".
+- Revealed result.
+- RNG state for deterministic reshuffles and testability.
+- `instantNotMe`, the optional house-rule toggle.
+
+The engine clones input state inside `applyCommand`, mutates the clone, and returns it. Callers should always replace their stored state with the returned state on success.
+
+## Commands
+
+Commands are typed in `src/types.ts`. They include:
+
+- Setup: `setupPeek`.
+- Ordinary turn actions: `draw`, `keepDrawn`, `discardDrawn`, `takeFromDone`.
+- Action resolution: `actionInput`, `knockItOutDecision`, `cancelAction`.
+- Round-ending call: `callNotMe`.
+- Quick discard: `slap`, followed by `giveCard` when an opponent slap creates a gift obligation.
+- Server timeout command: `forceSkipTurn`.
+
+Clients are not allowed to send `forceSkipTurn`; the server owns it.
+
+## Events
+
+Events are also typed in `src/types.ts`. Some are private:
+
+- `peek`: sent only to the addressed player.
+- `drawnCard`: sent only to the drawing player.
+
+Most events are public because they represent visible table actions, public card movement, or reveal. Public events may contain card identities only when the rules make that identity visible, such as discarded cards, slap outcomes, Knock It Out self-discards, or final reveal.
+
+## Visibility
+
+`src/view.ts` is the visibility boundary. It exposes:
+
+- `RoundView`, which contains phase, current player, caller, deck and DONE counts, DONE top, list sizes, pending public action metadata, pending gift participants, and reveal results.
+- `viewFor`, which omits face-down card identities and stable ids.
+- `eventVisibleTo`, which routes private events by explicit allowlist.
+
+Do not add another serialization path for round state.
+
+## Important Rule Flows
+
+### Setup Peek
+
+Each player may peek at exactly two own cards once. The engine sends a private `peek` event and a public `setupPeeked` event. When all players have peeked, the round enters `turn`.
+
+### Draw and DONE Pile
+
+On turn, a player can draw from the deck, take the DONE top, or call "NOT ME!". A drawn card is private until kept or discarded. Taking from DONE always swaps with an existing card and never triggers an action.
+
+### Actions
+
+Actions trigger only when an action card is drawn from the deck and discarded with action. Replaced cards, DONE-pile cards, slaps, and Knock It Out self-discards do not chain-trigger actions.
+
+The engine validates all targets. UI metadata in `apps/web/lib/actionMeta.ts` only disables impossible taps for user experience.
+
+### "Done It!" Slaps
+
+Slaps are allowed during `turn` and `drawn`, but not during `action`. Correct own-card slaps shrink the slapper's list. Correct opponent-card slaps expose the opponent's card, then create `pendingGift` until the slapper gives one own card face-down. Wrong slaps leave the owner card in place and draw an unseen penalty card for the slapper when possible.
+
+`expectedTopId` lets the engine distinguish a late slap against an old DONE top from a wrong slap against the current top.
+
+### "NOT ME!"
+
+The caller may call only at the start of their turn. Official rules queue one final turn for every other player in seat order. During final turns, the caller's list is locked against specific actions and opponent slaps. The optional `instantNotMe` toggle reveals immediately instead.
+
+At reveal, lists become public, totals are counted, and scores are produced. Ties go to the caller.
+
+### Session Scoring
+
+`src/session.ts` applies round scores to cumulative session state. `greatEscape` resets exactly 100 to 50 before `matchTo100` checks whether anyone crossed 100.
+
+## Tests
+
+Tests live in `packages/engine/test`. They cover deck setup, visibility, actions, turns, slaps, session scoring, and "NOT ME!" scoring. Engine behavior changes should include tests that prove the rule and privacy behavior.
+
+See [Testing and verification](./testing.md).
