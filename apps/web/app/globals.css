@@ -740,12 +740,24 @@ select {
 
 .center-piles {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 0;
+  position: relative;
+}
+
+.pile-stage {
+  display: flex;
   gap: 20px;
   justify-content: center;
   align-items: center;
   flex-wrap: wrap;
-  padding: 6px 0;
-  position: relative;
+  width: 100%;
+}
+
+.pile-stage[data-has-decision='true'] {
+  align-items: stretch;
 }
 
 .pile-btn {
@@ -768,6 +780,15 @@ select {
 .pile-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.pile-btn[data-active-pick='true'] {
+  opacity: 1;
+}
+
+.pile-btn[data-active-pick='true'] .card-img {
+  box-shadow: 0 0 0 4px var(--night-moon);
+  border-radius: 10px;
 }
 
 .pile-btn .pile-count {
@@ -920,16 +941,23 @@ select {
   }
 }
 
-/* -- drawn card panel -- */
+/* -- table-anchored card decision -- */
 
-.drawn-card-panel {
+.table-card-decision {
   display: flex;
   gap: 14px;
   align-items: center;
   background: var(--night-panel);
   border-radius: var(--radius);
   padding: 12px;
+  min-width: min(100%, 260px);
+  max-width: 360px;
+  box-shadow: var(--shadow-card);
   animation: drawn-enter 220ms ease-out;
+}
+
+.table-card-decision-compact {
+  width: min(100%, 340px);
 }
 
 @keyframes drawn-enter {
@@ -948,18 +976,18 @@ select {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .drawn-card-panel,
+  .table-card-decision,
   .drawn-anim {
     animation: none;
   }
 }
 
-.drawn-card-face {
+.decision-card-face {
   flex-shrink: 0;
   width: 88px;
 }
 
-.drawn-card-actions {
+.decision-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -967,18 +995,26 @@ select {
   min-width: 0;
 }
 
-.drawn-card-actions .btn {
+.decision-actions .btn,
+.table-card-decision-compact .btn {
   color: var(--night-accent);
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 15px;
+  line-height: 1.15;
+  white-space: normal;
 }
 
-.drawn-card-actions .btn-primary {
+.decision-actions .btn-primary {
   color: var(--ink);
 }
 
-.drawn-hint {
+.decision-hint {
   color: var(--night-accent);
   font-size: 14px;
   font-weight: 700;
+  text-align: center;
 }
 
 /* -- slot picker overlay (take from DONE) -- */
@@ -1921,12 +1957,13 @@ select {
     font-size: 16px;
   }
 
-  .drawn-card-panel {
+  .table-card-decision {
     flex-direction: column;
     align-items: stretch;
+    width: min(100%, 280px);
   }
 
-  .drawn-card-face {
+  .decision-card-face {
     width: 72px;
     align-self: center;
   }

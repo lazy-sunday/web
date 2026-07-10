@@ -57,8 +57,10 @@ export function GameTable({ game }: { game: Game }) {
   const clearSlapTarget = useCallback(() => setSelectedSlapTarget(null), []);
   useEffect(() => {
     if (!view?.myDrawnCard) setPickMode((m) => (m === 'keep' ? null : m));
-    if (view?.phase !== 'turn') setPickMode((m) => (m === 'takeFromDone' ? null : m));
-  }, [view?.myDrawnCard, view?.phase]);
+    if (view?.phase !== 'turn' || view.currentPlayer !== me?.playerId) {
+      setPickMode((m) => (m === 'takeFromDone' ? null : m));
+    }
+  }, [view?.myDrawnCard, view?.phase, view?.currentPlayer, me?.playerId]);
   useEffect(() => {
     if (pickMode !== null) clearSlapTarget();
   }, [pickMode, clearSlapTarget]);
@@ -144,11 +146,14 @@ export function GameTable({ game }: { game: Game }) {
 
           <CenterPiles
             game={game}
+            myListSize={myPlayerView?.listSize ?? 0}
             inFlight={inFlight}
             sendGuarded={sendGuarded}
             isMyTurn={isMyTurn}
             pickMode={pickMode}
+            onStartKeepPick={() => setPickMode('keep')}
             onStartTakeFromDone={() => setPickMode('takeFromDone')}
+            onCancelPick={() => setPickMode(null)}
           />
 
           <MyRow
@@ -158,11 +163,8 @@ export function GameTable({ game }: { game: Game }) {
             isCaller={view.caller === myId}
             peeks={peeks}
             inFlight={inFlight}
-            sendGuarded={sendGuarded}
             pickMode={pickMode}
             onPickSlot={onPickSlot}
-            onStartKeepPick={() => setPickMode('keep')}
-            onCancelPick={() => setPickMode(null)}
             canSelectSlapTarget={canSelectSlapTarget}
             selectedSlapTarget={selectedSlapTarget}
             onSelectSlapTarget={onSelectSlapTarget}
@@ -409,61 +411,90 @@ function OpponentRow({
 
 function CenterPiles({
   game,
+  myListSize,
   inFlight,
   sendGuarded,
   isMyTurn,
   pickMode,
+  onStartKeepPick,
   onStartTakeFromDone,
+  onCancelPick,
 }: {
   game: Game;
+  myListSize: number;
   inFlight: boolean;
   sendGuarded: (fn: () => void) => void;
   isMyTurn: boolean;
   pickMode: 'keep' | 'takeFromDone' | null;
+  onStartKeepPick: () => void;
   onStartTakeFromDone: () => void;
+  onCancelPick: () => void;
 }) {
   const { view } = game;
   const justChanged = useJustChanged(view?.doneTop?.id ?? null);
   if (!view) return null;
-  const canAct = isMyTurn && view.phase === 'turn' && pickMode === null;
+  const drawn = view.myDrawnCard ?? null;
+  const canChoosePile = isMyTurn && view.phase === 'turn' && pickMode === null && !drawn;
 
   return (
     <div className="center-piles">
-      <button
-        type="button"
-        className="pile-btn deck-pile"
-        disabled={!canAct || inFlight || view.deckCount === 0}
-        aria-label={`Deck, ${view.deckCount} cards left. ${canAct ? 'Tap to draw.' : ''}`}
-        onClick={() => sendGuarded(() => game.sendCommand({ type: 'draw' }))}
-      >
-        <CardBack className="card-img-lg" />
-        <span className="pile-count">{view.deckCount}</span>
-      </button>
-
-      <button
-        type="button"
-        className="pile-btn done-pile"
-        data-just-changed={justChanged}
-        disabled={!canAct || inFlight || !view.doneTop || view.players.find((p) => p.id === game.me?.playerId)?.listSize === 0}
-        aria-label={
-          view.doneTop
-            ? `DONE pile, top card ${view.doneTop.name}, ${view.doneCount} cards. ${canAct ? 'Tap to take it into your list.' : ''}`
-            : 'DONE pile is empty'
-        }
-        onClick={() => {
-          if (!canAct) return;
-          onStartTakeFromDone();
-        }}
-      >
-        {view.doneTop ? (
-          <CardFace name={view.doneTop.name as CardName} className="card-img-lg" />
-        ) : (
+      <div className="pile-stage" data-has-decision={!!drawn || pickMode === 'takeFromDone'}>
+        <button
+          type="button"
+          className="pile-btn deck-pile"
+          disabled={!canChoosePile || inFlight || view.deckCount === 0}
+          aria-label={`Deck, ${view.deckCount} cards left. ${canChoosePile ? 'Tap to draw.' : 'Unavailable right now.'}`}
+          onClick={() => sendGuarded(() => game.sendCommand({ type: 'draw' }))}
+        >
           <CardBack className="card-img-lg" />
-        )}
-        <span className="pile-count">{view.doneCount}</span>
-      </button>
+          <span className="pile-count">{view.deckCount}</span>
+        </button>
 
-      {canAct && !view.myDrawnCard && (
+        {drawn && (
+          <TableCardDecision
+            drawn={drawn}
+            myListSize={myListSize}
+            inFlight={inFlight}
+            pickingKeepSlot={pickMode === 'keep'}
+            onKeep={() => {
+              if (myListSize === 0) {
+                sendGuarded(() => game.sendCommand({ type: 'keepDrawn', slot: 0 }));
+              } else {
+                onStartKeepPick();
+              }
+            }}
+            onDiscard={() => sendGuarded(() => game.sendCommand({ type: 'discardDrawn', withAction: false }))}
+            onPlayAction={() => sendGuarded(() => game.sendCommand({ type: 'discardDrawn', withAction: true }))}
+            onCancelPick={onCancelPick}
+          />
+        )}
+
+        <button
+          type="button"
+          className="pile-btn done-pile"
+          data-active-pick={pickMode === 'takeFromDone'}
+          data-just-changed={justChanged}
+          disabled={!canChoosePile || inFlight || !view.doneTop || myListSize === 0}
+          aria-label={
+            view.doneTop
+              ? `DONE pile, top card ${view.doneTop.name}, ${view.doneCount} cards. ${canChoosePile ? 'Tap to take it into your list.' : 'Unavailable right now.'}`
+              : 'DONE pile is empty'
+          }
+          onClick={() => {
+            if (!canChoosePile) return;
+            onStartTakeFromDone();
+          }}
+        >
+          {view.doneTop ? (
+            <CardFace name={view.doneTop.name as CardName} className="card-img-lg" />
+          ) : (
+            <CardBack className="card-img-lg" />
+          )}
+          <span className="pile-count">{view.doneCount}</span>
+        </button>
+      </div>
+
+      {canChoosePile && (
         <button
           type="button"
           className="btn btn-night not-me-btn"
@@ -474,14 +505,21 @@ function CenterPiles({
         </button>
       )}
 
-      {pickMode === 'takeFromDone' && <p className="waiting-line">Tap a slot in your row below to swap it in.</p>}
+      {pickMode === 'takeFromDone' && (
+        <div className="table-card-decision table-card-decision-compact" role="region" aria-label="Take DONE card">
+          <p className="decision-hint">Choose one of your slots below to swap in the DONE card.</p>
+          <button type="button" className="btn btn-ghost btn-block" onClick={onCancelPick}>
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// My row: bottom, larger cards, horizontally scrollable at 375px. Handles the
-// drawn-card hand area (keep/discard) and the keep-target slot picker.
+// My row: bottom, larger cards, horizontally scrollable at 375px. It owns the
+// target slots for keep/take-from-DONE while the decision UI stays table-side.
 
 function MyRow({
   game,
@@ -490,11 +528,8 @@ function MyRow({
   isCaller,
   peeks,
   inFlight,
-  sendGuarded,
   pickMode,
   onPickSlot,
-  onStartKeepPick,
-  onCancelPick,
   canSelectSlapTarget,
   selectedSlapTarget,
   onSelectSlapTarget,
@@ -505,17 +540,13 @@ function MyRow({
   isCaller: boolean;
   peeks: ReturnType<typeof usePeeks>;
   inFlight: boolean;
-  sendGuarded: (fn: () => void) => void;
   pickMode: 'keep' | 'takeFromDone' | null;
   onPickSlot: (slot: number) => void;
-  onStartKeepPick: () => void;
-  onCancelPick: () => void;
   canSelectSlapTarget: boolean;
   selectedSlapTarget: SlapTarget | null;
   onSelectSlapTarget: (owner: PlayerId, slot: number) => void;
 }) {
   const { view, me, events } = game;
-  const drawn = view?.myDrawnCard ?? null;
   const justPlacedSlot = useJustPlacedSlot(events, me?.playerId ?? null);
 
   if (!view || !me) return null;
@@ -526,7 +557,7 @@ function MyRow({
     <div className="my-row">
       <div className="my-row-header">
         <span className="my-row-label">Your chore list {isCaller && <span className="caller-badge">NOT ME!</span>}</span>
-        {isMyTurn && view.phase === 'turn' && !drawn && pickMode === null && (
+        {isMyTurn && view.phase === 'turn' && !view.myDrawnCard && pickMode === null && (
           <span className="turn-hint">Your turn — draw, take DONE, or call NOT ME!</span>
         )}
       </div>
@@ -566,30 +597,11 @@ function MyRow({
         })}
         {myListSize === 0 && <p className="empty-seats">Your list is empty — nice.</p>}
       </div>
-
-      {drawn && (
-        <DrawnCardPanel
-          drawn={drawn}
-          myListSize={myListSize}
-          inFlight={inFlight}
-          pickingKeepSlot={pickMode === 'keep'}
-          onKeep={() => {
-            if (myListSize === 0) {
-              sendGuarded(() => game.sendCommand({ type: 'keepDrawn', slot: 0 }));
-            } else {
-              onStartKeepPick();
-            }
-          }}
-          onDiscard={() => sendGuarded(() => game.sendCommand({ type: 'discardDrawn', withAction: false }))}
-          onPlayAction={() => sendGuarded(() => game.sendCommand({ type: 'discardDrawn', withAction: true }))}
-          onCancelPick={onCancelPick}
-        />
-      )}
     </div>
   );
 }
 
-function DrawnCardPanel({
+function TableCardDecision({
   drawn,
   myListSize,
   inFlight,
@@ -610,14 +622,14 @@ function DrawnCardPanel({
 }) {
   const isAction = drawn.kind === 'action';
   return (
-    <div className="drawn-card-panel" role="region" aria-label="Drawn card">
-      <div className="drawn-card-face">
+    <div className="table-card-decision" role="region" aria-label="Drawn card">
+      <div className="decision-card-face">
         <CardFace name={drawn.name as CardName} className="card-img-lg drawn-anim" />
       </div>
-      <div className="drawn-card-actions">
+      <div className="decision-actions">
         {pickingKeepSlot ? (
           <>
-            <p className="drawn-hint">Tap one of your slots above to place it there.</p>
+            <p className="decision-hint">Choose one of your slots below to place this card.</p>
             <button type="button" className="btn btn-ghost btn-block" onClick={onCancelPick}>
               Cancel
             </button>
