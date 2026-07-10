@@ -7,7 +7,7 @@ import { mdToHtml } from '../../lib/markdown';
 
 export const dynamic = 'force-static';
 
-export const metadata = { title: 'LAZY SUNDAY — Rules' };
+export const metadata = { title: 'Lazy Sunday — Rules' };
 
 export default function RulesPage() {
   // apps/web is cwd for both `next dev` and `next build`.

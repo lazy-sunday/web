@@ -1,6 +1,6 @@
 import RoomClient from '../../../components/RoomClient';
 
-export const metadata = { title: 'LAZY SUNDAY — Room' };
+export const metadata = { title: 'Lazy Sunday — Room' };
 
 // Next 15 app router: params is async.
 export default async function RoomPage({ params }: { params: Promise<{ code: string }> }) {
