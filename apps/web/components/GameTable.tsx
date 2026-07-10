@@ -7,7 +7,7 @@
 // renders from the card-back SVG; the only faces ever shown are the DONE
 // top (always public) and whatever `usePeeks`/`myDrawnCard` grants me.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardName, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
 import { usePeeks } from '../lib/usePeeks';
@@ -18,7 +18,7 @@ import { ActionModal } from './ActionModal';
 import { CardBack, CardFace } from './Card';
 import { FloatingReactions, ReactionBar } from './ReactionBar';
 import { RevealScreen } from './RevealScreen';
-import { SlapLayer } from './SlapLayer';
+import { SlapLayer, type SlapTarget } from './SlapLayer';
 import { SoundToggle } from './SoundToggle';
 import { HouseRuleBadges } from './HouseRuleBadges';
 
@@ -53,10 +53,15 @@ export function GameTable({ game }: { game: Game }) {
   // must all run before any early return (Rules of Hooks), so this is
   // declared alongside `inFlight` rather than after the phase/null guards.
   const [pickMode, setPickMode] = useState<'keep' | 'takeFromDone' | null>(null);
+  const [selectedSlapTarget, setSelectedSlapTarget] = useState<SlapTarget | null>(null);
+  const clearSlapTarget = useCallback(() => setSelectedSlapTarget(null), []);
   useEffect(() => {
     if (!view?.myDrawnCard) setPickMode((m) => (m === 'keep' ? null : m));
     if (view?.phase !== 'turn') setPickMode((m) => (m === 'takeFromDone' ? null : m));
   }, [view?.myDrawnCard, view?.phase]);
+  useEffect(() => {
+    if (pickMode !== null) clearSlapTarget();
+  }, [pickMode, clearSlapTarget]);
 
   if (!view || !me || !lobby) return null;
 
@@ -77,6 +82,9 @@ export function GameTable({ game }: { game: Game }) {
   const isMyTurn = view.currentPlayer === myId;
   const myPlayerView = view.players.find((p) => p.id === myId);
   const opponents = view.players.filter((p) => p.id !== myId);
+  const myListSize = myPlayerView?.listSize ?? 0;
+  const canSelectSlapTarget = view.doneTop !== null && view.phase !== 'action' && view.pendingGift === null && pickMode === null;
+  const canSelectOpponentSlapTarget = canSelectSlapTarget && myListSize > 0;
 
   function sendGuarded(fn: () => void) {
     if (inFlight) return;
@@ -92,6 +100,12 @@ export function GameTable({ game }: { game: Game }) {
       setPickMode(null);
       sendGuarded(() => game.sendCommand({ type: 'takeFromDone', slot }));
     }
+  }
+
+  function onSelectSlapTarget(owner: PlayerId, slot: number) {
+    if (!canSelectSlapTarget) return;
+    if (owner !== myId && !canSelectOpponentSlapTarget) return;
+    setSelectedSlapTarget({ owner, slot });
   }
 
   return (
@@ -121,6 +135,9 @@ export function GameTable({ game }: { game: Game }) {
                 isCurrent={view.currentPlayer === p.id}
                 isCaller={view.caller === p.id}
                 peeks={peeks}
+                canSelectSlapTarget={canSelectOpponentSlapTarget}
+                selectedSlapTarget={selectedSlapTarget}
+                onSelectSlapTarget={onSelectSlapTarget}
               />
             ))}
           </div>
@@ -136,7 +153,7 @@ export function GameTable({ game }: { game: Game }) {
 
           <MyRow
             game={game}
-            myListSize={myPlayerView?.listSize ?? 0}
+            myListSize={myListSize}
             isMyTurn={isMyTurn}
             isCaller={view.caller === myId}
             peeks={peeks}
@@ -146,9 +163,17 @@ export function GameTable({ game }: { game: Game }) {
             onPickSlot={onPickSlot}
             onStartKeepPick={() => setPickMode('keep')}
             onCancelPick={() => setPickMode(null)}
+            canSelectSlapTarget={canSelectSlapTarget}
+            selectedSlapTarget={selectedSlapTarget}
+            onSelectSlapTarget={onSelectSlapTarget}
           />
 
-          <SlapLayer game={game} nameOf={nameOf} colorOf={colorOf} />
+          <SlapLayer
+            game={game}
+            nameOf={nameOf}
+            selectedTarget={selectedSlapTarget}
+            onClearTarget={clearSlapTarget}
+          />
         </>
       )}
 
@@ -326,6 +351,9 @@ function OpponentRow({
   isCurrent,
   isCaller,
   peeks,
+  canSelectSlapTarget,
+  selectedSlapTarget,
+  onSelectSlapTarget,
 }: {
   playerId: PlayerId;
   name: string;
@@ -334,6 +362,9 @@ function OpponentRow({
   isCurrent: boolean;
   isCaller: boolean;
   peeks: ReturnType<typeof usePeeks>;
+  canSelectSlapTarget: boolean;
+  selectedSlapTarget: SlapTarget | null;
+  onSelectSlapTarget: (owner: PlayerId, slot: number) => void;
 }) {
   return (
     <div className="opponent-row" data-current={isCurrent}>
@@ -347,10 +378,25 @@ function OpponentRow({
       <div className="opponent-cards" role="group" aria-label={`${name}'s chore list`}>
         {Array.from({ length: listSize }).map((_, i) => {
           const peeked = peeks.peekAt(playerId, i);
+          const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === i;
           return (
-            <div key={i} className="opp-slot" aria-label={peeked ? `${name}'s card, slot ${i + 1}, revealed to you: ${peeked.name}` : `${name}'s card, slot ${i + 1}, face down`}>
+            <button
+              key={i}
+              type="button"
+              className="opp-slot"
+              data-slap-pickable={canSelectSlapTarget}
+              data-slap-selected={selected}
+              disabled={!canSelectSlapTarget}
+              aria-label={
+                peeked
+                  ? `${name}'s card, slot ${i + 1}, revealed to you: ${peeked.name}${canSelectSlapTarget ? ' — select for Done it!' : ''}`
+                  : `${name}'s card, slot ${i + 1}, face down${canSelectSlapTarget ? ' — select for Done it!' : ''}`
+              }
+              aria-pressed={canSelectSlapTarget ? selected : undefined}
+              onClick={() => onSelectSlapTarget(playerId, i)}
+            >
               {peeked ? <CardFace name={peeked.name as CardName} className="card-img-sm" /> : <CardBack className="card-img-sm" />}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -449,6 +495,9 @@ function MyRow({
   onPickSlot,
   onStartKeepPick,
   onCancelPick,
+  canSelectSlapTarget,
+  selectedSlapTarget,
+  onSelectSlapTarget,
 }: {
   game: Game;
   myListSize: number;
@@ -461,6 +510,9 @@ function MyRow({
   onPickSlot: (slot: number) => void;
   onStartKeepPick: () => void;
   onCancelPick: () => void;
+  canSelectSlapTarget: boolean;
+  selectedSlapTarget: SlapTarget | null;
+  onSelectSlapTarget: (owner: PlayerId, slot: number) => void;
 }) {
   const { view, me, events } = game;
   const drawn = view?.myDrawnCard ?? null;
@@ -482,20 +534,31 @@ function MyRow({
       <div className="my-list-row" role="group" aria-label="Your chore list">
         {Array.from({ length: myListSize }).map((_, i) => {
           const peeked = me ? peeks.peekAt(me.playerId, i) : null;
+          const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === i;
+          const slapPickable = !pickable && canSelectSlapTarget;
           return (
             <button
               key={i}
               type="button"
               className="slot-btn slot-btn-lg"
               data-pickable={pickable}
+              data-slap-pickable={slapPickable}
+              data-slap-selected={selected}
               data-just-placed={justPlacedSlot === i}
-              disabled={!pickable || inFlight}
+              disabled={pickable ? inFlight : !slapPickable}
+              aria-pressed={slapPickable ? selected : undefined}
               aria-label={
                 peeked
-                  ? `Your card, slot ${i + 1}, revealed: ${peeked.name}`
-                  : `Your card, slot ${i + 1}, face down${pickable ? ' — tap to place card here' : ''}`
+                  ? `Your card, slot ${i + 1}, revealed: ${peeked.name}${pickable ? ' — tap to place card here' : slapPickable ? ' — select for Done it!' : ''}`
+                  : `Your card, slot ${i + 1}, face down${pickable ? ' — tap to place card here' : slapPickable ? ' — select for Done it!' : ''}`
               }
-              onClick={() => onPickSlot(i)}
+              onClick={() => {
+                if (pickable) {
+                  onPickSlot(i);
+                } else if (slapPickable) {
+                  onSelectSlapTarget(me.playerId, i);
+                }
+              }}
             >
               {peeked ? <CardFace name={peeked.name as CardName} /> : <CardBack />}
             </button>
