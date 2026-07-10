@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'LAZY SUNDAY',
+  title: 'Lazy Sunday',
   description: 'Dodge your chore list. Protect your day off. Shout "Not me!"',
 };
 
