@@ -200,7 +200,12 @@ function PlayerPresenceBar({ lobby, meId }: { lobby: NonNullable<Game['lobby']>;
     <div className="table-presence" aria-label="Player connection status">
       {lobby.players.map((p) => (
         <span key={p.id} className="table-presence-player" data-connected={p.connected}>
-          <span className="conn-dot" data-connected={p.connected} aria-hidden />
+          <span
+            className="conn-dot"
+            data-connected={p.connected}
+            role="img"
+            aria-label={p.connected ? `${p.name} is connected` : `${p.name} is disconnected`}
+          />
           <span className="table-presence-name">
             {p.name}
             {p.id === meId ? ' (you)' : ''}
