@@ -712,6 +712,40 @@ select {
   white-space: nowrap;
 }
 
+.table-presence {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  scrollbar-width: thin;
+}
+
+.table-presence-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 150px;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
+  color: rgba(71, 37, 15, 0.84);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.table-presence-player[data-connected='false'] {
+  color: rgba(71, 37, 15, 0.48);
+}
+
+.table-presence-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .opponent-cards {
   display: flex;
   gap: 6px;
