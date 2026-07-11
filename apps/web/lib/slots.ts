@@ -6,11 +6,17 @@ export interface RenderSlot {
   occupied: boolean;
 }
 
-export function renderSlotsFor(player: PlayerView | undefined): RenderSlot[] {
+type SlotPlayerView = Pick<PlayerView, 'listSize'> & Partial<Pick<PlayerView, 'listSlots'>>;
+
+export function renderSlotsFor(player: SlotPlayerView | null | undefined): RenderSlot[] {
   if (!player) return [];
-  return player.listSlots.map((occupied, visualSlot) => ({
+  // During a rolling deployment, an updated web client can briefly receive a
+  // PlayerView from an older server that only exposes listSize. Legacy views
+  // had compact, gap-free lists, so recreating that shape preserves their UI.
+  const listSlots = player.listSlots ?? Array.from({ length: player.listSize }, () => true);
+  return listSlots.map((occupied, visualSlot) => ({
     visualSlot,
-    cardSlot: occupied ? compactSlotFor(player.listSlots, visualSlot) : null,
+    cardSlot: occupied ? compactSlotFor(listSlots, visualSlot) : null,
     occupied,
   }));
 }
