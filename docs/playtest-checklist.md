@@ -102,11 +102,11 @@ picker, not manufacturing the exact draw.
       list grows).
 13. **Landlord's Notice drawn and discarded-with-action.**
     - Target **yourself**.
-    - **Verify:** this is explicitly ALLOWED (§9.4: "may target anyone,
-      including the user") — the top deck card goes face-down onto your own
-      list, unseen even by you.
-    - On a later draw of the same card, target an opponent instead.
-    - **Verify:** also allowed, also unseen by anyone.
+    - **Verify:** rejected with `invalidTarget` (§9.4 — Landlord's Notice must
+      target another player). No card is drawn or added to any list.
+    - Then target an opponent instead.
+    - **Verify:** the top deck card goes face-down onto that opponent's list,
+      unseen by anyone.
 
 ---
 

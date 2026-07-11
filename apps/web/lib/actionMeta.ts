@@ -77,8 +77,8 @@ export const ACTION_FLOWS: Record<ActionName, ActionFlow> = {
   "Landlord's Notice": {
     action: "Landlord's Notice",
     title: "Landlord's Notice",
-    ruleText: 'Take the top deck card and slide it face-down onto ANY player\'s list — even your own.',
-    steps: [{ kind: 'pickPlayer', key: 'targetId', prompt: "Tap a player's list to serve the notice on.", owner: 'anyone' }],
+    ruleText: "Take the top deck card and slide it face-down onto any ONE opponent's list.",
+    steps: [{ kind: 'pickPlayer', key: 'targetId', prompt: "Tap an opponent's list to serve the notice on.", owner: 'othersOnly' }],
   },
   "I'm Busy": {
     action: "I'm Busy",
