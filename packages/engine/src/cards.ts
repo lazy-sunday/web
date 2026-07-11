@@ -28,6 +28,14 @@ export interface Card {
   kind: 'chore' | 'action';
 }
 
+export const DEFAULT_DECK_COUNT = 1;
+export const MIN_DECK_COUNT = 1;
+export const MAX_DECK_COUNT = 3;
+
+export function isValidDeckCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= MIN_DECK_COUNT && value <= MAX_DECK_COUNT;
+}
+
 interface CardSpec {
   name: CardName;
   effort: number;
@@ -52,17 +60,23 @@ export const CARD_SPECS: readonly CardSpec[] = [
   { name: "Landlord's Notice", effort: 13, kind: 'action', copies: 4 },
 ];
 
-/** Builds the full 54-card deck, unshuffled, with stable ids like "snoop-2". */
-export function buildDeck(): Card[] {
+/** Builds one or more complete 54-card decks, unshuffled. */
+export function buildDeck(deckCount = DEFAULT_DECK_COUNT): Card[] {
+  if (!isValidDeckCount(deckCount)) {
+    throw new Error(`deckCount must be an integer from ${MIN_DECK_COUNT} to ${MAX_DECK_COUNT}`);
+  }
   const deck: Card[] = [];
-  for (const spec of CARD_SPECS) {
-    for (let i = 0; i < spec.copies; i++) {
-      deck.push({
-        id: `${slug(spec.name)}-${i}`,
-        name: spec.name,
-        effort: spec.effort,
-        kind: spec.kind,
-      });
+  for (let deckIndex = 0; deckIndex < deckCount; deckIndex++) {
+    for (const spec of CARD_SPECS) {
+      for (let i = 0; i < spec.copies; i++) {
+        const idPrefix = deckCount === 1 ? slug(spec.name) : `${slug(spec.name)}-d${deckIndex + 1}`;
+        deck.push({
+          id: `${idPrefix}-${i}`,
+          name: spec.name,
+          effort: spec.effort,
+          kind: spec.kind,
+        });
+      }
     }
   }
   return deck;

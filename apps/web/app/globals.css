@@ -257,6 +257,40 @@ select {
   max-width: 420px;
 }
 
+.create-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 2px solid rgba(71, 37, 15, 0.12);
+  border-radius: var(--radius);
+  background: var(--day-cream);
+}
+
+.create-setting span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.create-setting small {
+  color: rgba(71, 37, 15, 0.68);
+  font-size: 13px;
+}
+
+.create-setting select {
+  min-height: 44px;
+  min-width: 104px;
+  padding: 6px 8px;
+  border: 2px solid rgba(71, 37, 15, 0.3);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+}
+
 .join-row {
   display: flex;
   gap: 10px;

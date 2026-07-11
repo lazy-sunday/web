@@ -25,6 +25,8 @@ export interface LobbyPlayer {
 }
 
 export interface RoomToggles {
+  /** Number of complete standard decks used for every round in the match. */
+  deckCount: number;
   matchTo100: boolean;
   greatEscape: boolean;
   /** House-rule: "NOT ME!" reveals immediately, skipping §7 final turns. */
@@ -61,7 +63,7 @@ export type ToggleKey = keyof RoomToggles;
 export type ClientMessage =
   | { type: 'join'; roomCode: string; name: string; color: string; token?: string }
   | { type: 'setToggle'; toggle: 'matchTo100' | 'greatEscape' | 'instantNotMe'; value: boolean }
-  | { type: 'setToggle'; toggle: 'turnTimeoutSeconds'; value: number }
+  | { type: 'setToggle'; toggle: 'turnTimeoutSeconds' | 'deckCount'; value: number }
   | { type: 'startGame' }
   | { type: 'command'; command: ClientCommand }
   | { type: 'nextRound' }

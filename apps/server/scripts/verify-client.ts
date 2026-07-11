@@ -185,7 +185,11 @@ async function main(): Promise<void> {
   assert(health.ok === true, 'server is up');
 
   console.log('== create room over HTTP ==');
-  const { code } = (await fetch(`${HTTP}/rooms`, { method: 'POST' }).then((r) => r.json())) as {
+  const { code } = (await fetch(`${HTTP}/rooms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deckCount: 2 }),
+  }).then((r) => r.json())) as {
     code: string;
   };
   assert(/^[A-HJ-NP-Z2-9]{6}$/.test(code), `room code ${code} uses the unambiguous alphabet`);
@@ -208,11 +212,15 @@ async function main(): Promise<void> {
   await alice.waitFor((m) => m['type'] === 'lobby' && m['lobby'].players.length === 3, '3-player lobby');
   assert(alice.lobby!['players'][0].isHost === true, 'first joiner is host');
   assert(alice.lobby!['players'].every((p: Json) => p['connected'] === true), 'all connection dots green');
+  assert(alice.lobby!['toggles'].deckCount === 2, 'room creation selected two decks');
 
   console.log('== toggles ==');
   const nonHostErr = bob.waitFor((m) => m['type'] === 'error', 'notHost error');
   bob.send({ type: 'setToggle', toggle: 'greatEscape', value: true });
   assert((await nonHostErr)['code'] === 'notHost', 'non-host cannot toggle');
+  const nonHostDeckErr = bob.waitFor((m) => m['type'] === 'error', 'notHost deck-count error');
+  bob.send({ type: 'setToggle', toggle: 'deckCount', value: 3 });
+  assert((await nonHostDeckErr)['code'] === 'notHost', 'non-host cannot change deck count');
   const toggled = alice.waitFor(
     (m) => m['type'] === 'lobby' && m['lobby'].toggles.greatEscape === true,
     'greatEscape on',
@@ -220,6 +228,13 @@ async function main(): Promise<void> {
   alice.send({ type: 'setToggle', toggle: 'greatEscape', value: true });
   await toggled;
   assert(true, 'host toggled Great Escape');
+  const deckCountChanged = alice.waitFor(
+    (m) => m['type'] === 'lobby' && m['lobby'].toggles.deckCount === 3,
+    'deck count changed',
+  );
+  alice.send({ type: 'setToggle', toggle: 'deckCount', value: 3 });
+  await deckCountChanged;
+  assert(true, 'host changed deck count before starting');
 
   console.log('== start game ==');
   const notHostStart = carol.waitFor((m) => m['type'] === 'error', 'notHost start');
@@ -231,7 +246,11 @@ async function main(): Promise<void> {
   alice.send({ type: 'startGame' });
   await viewsUp;
   assert(alice.view!['phase'] === 'setupPeek', 'round begins in setupPeek');
-  assert(alice.view!['deckCount'] === 54 - 18 - 1, 'deck = 54 - 3x6 dealt - 1 DONE flip');
+  assert(alice.view!['deckCount'] === 162 - 18 - 1, 'deck = 3x54 - 3x6 dealt - 1 DONE flip');
+  const deckLocked = alice.waitFor((m) => m['type'] === 'error', 'deck-count lock error');
+  alice.send({ type: 'setToggle', toggle: 'deckCount', value: 1 });
+  assert((await deckLocked)['code'] === 'wrongStatus', 'deck count locks after the game starts');
+  assert(alice.view!['deckCount'] === 162 - 18 - 1, 'locked deck count leaves the active round unchanged');
   assert(
     [alice, bob, carol].every((c) => c.view!['players'].every((p: Json) => p['listSize'] === 6)),
     'everyone sees 6 face-down slots per player',
@@ -313,6 +332,12 @@ async function main(): Promise<void> {
   await bob2.connect();
   const rejoined = bob2.waitFor((m) => m['type'] === 'joined', 'rejoined');
   const viewBack = bob2.waitFor((m) => m['type'] === 'view', 'view after rejoin');
+  const reconnected = alice.waitFor(
+    (m) =>
+      m['type'] === 'lobby' &&
+      m['lobby'].players.find((p: Json) => p.id === bobId)?.connected === true,
+    'bob shows reconnected',
+  );
   bob2.send({ type: 'join', roomCode: code, name: 'bob', color: '#8FA2DC', token: bobToken });
   await rejoined;
   assert(bob2.playerId === bobId, 'token rejoin recovers the same seat/playerId');
@@ -322,12 +347,7 @@ async function main(): Promise<void> {
     'rejoined view matches pre-kill list size',
   );
   assert(bob2.view!['phase'] === 'turn', 'rejoined mid-game straight into the turn phase');
-  await alice.waitFor(
-    (m) =>
-      m['type'] === 'lobby' &&
-      m['lobby'].players.find((p: Json) => p.id === bobId)?.connected === true,
-    'bob shows reconnected',
-  );
+  await reconnected;
   assert(true, 'others see bob reconnected');
 
   console.log('== three more turns with the rejoined socket ==');

@@ -20,6 +20,8 @@ export interface RoundConfig {
   /** Seat index of the player who takes the first turn. */
   startingPlayer: number;
   seed: number;
+  /** Number of complete standard decks in this house-rule round. */
+  deckCount?: number;
   /** House-rule opt-in (default false): when true, "NOT ME!" reveals the round
    *  IMMEDIATELY with no final turns. The official rules (§7 — every other
    *  player takes exactly one final turn) are the default and are unchanged. */
@@ -37,7 +39,7 @@ export function createRound(config: RoundConfig): RoundState {
   }
 
   // §3.1: shuffle, deal 6 face-down to each player.
-  const shuffled = shuffle(buildDeck(), config.seed);
+  const shuffled = shuffle(buildDeck(config.deckCount), config.seed);
   const deck = shuffled.items;
   const players = config.players.map((id) => ({
     id,
