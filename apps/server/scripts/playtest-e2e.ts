@@ -581,11 +581,17 @@ async function main(): Promise<void> {
       }
       case "Landlord's Notice": {
         seen.landlordsNotice = true;
-        // §9.4: self-target is explicitly ALLOWED for Landlord's Notice.
-        const done = actor.waitEvent('landlordsNoticed', (e) => e.targetId === actor.playerId);
-        actor.cmd({ type: 'actionInput', input: { action: "Landlord's Notice", targetId: actor.playerId } });
+        // §9.4: self-target is rejected; the notice must go to another player.
+        {
+          const rejected = actor.waitFor((m) => m['type'] === 'error', 'invalidTarget landlords-self');
+          actor.cmd({ type: 'actionInput', input: { action: "Landlord's Notice", targetId: actor.playerId } });
+          assert((await rejected)['code'] === 'invalidTarget', "Landlord's Notice self-target rejected (§9.4)");
+        }
+        const target = ctx.all.find((c) => c !== actor)!;
+        const done = actor.waitEvent('landlordsNoticed', (e) => e.targetId === target.playerId);
+        actor.cmd({ type: 'actionInput', input: { action: "Landlord's Notice", targetId: target.playerId } });
         await done;
-        assert(true, "Landlord's Notice self-target allowed (§9.4)");
+        assert(true, "Landlord's Notice opponent target applied (§9.4)");
         break;
       }
       case 'Knock It Out': {
@@ -739,7 +745,7 @@ async function main(): Promise<void> {
 
   assert(seen.switcheroo, 'Switcheroo appeared and was exercised (§9.4)');
   assert(seen.notMyJob, '"Not My Job" appeared and was exercised (§9.4)');
-  assert(seen.landlordsNotice, "Landlord's Notice appeared and was exercised (§9.4 self-target)");
+  assert(seen.landlordsNotice, "Landlord's Notice appeared and was exercised (§9.4 opponent target)");
   assert(seen.knockItOut, 'Knock It Out appeared and was exercised (§9.5)');
   if (!seen.switcheroo) skip('Switcheroo drawn+discarded-with-action', 250);
   if (!seen.notMyJob) skip('"Not My Job" drawn+discarded-with-action', 250);
@@ -1097,7 +1103,7 @@ async function exerciseEmptyList(ctx: Ctx, seen: Record<string, boolean>): Promi
         Switcheroo: { action: 'Switcheroo', a: x!.playerId, aSlot: 0, b: y!.playerId, bSlot: 0 },
         Snoop: { action: 'Snoop', targetId: target.playerId, slot: 0 },
         'Not My Job': { action: 'Not My Job', fromId: x!.playerId, fromSlot: 0, toId: y!.playerId },
-        "Landlord's Notice": { action: "Landlord's Notice", targetId: result.actor.playerId },
+        "Landlord's Notice": { action: "Landlord's Notice", targetId: target.playerId },
         "I'm Busy": { action: "I'm Busy", targetId: target.playerId },
       };
       result.actor.cmd({ type: 'actionInput', input: genericInput[result.cardName] });
@@ -1393,7 +1399,7 @@ async function driveToReveal(ctx: Ctx): Promise<void> {
           Switcheroo: { action: 'Switcheroo', a: x!.playerId, aSlot: 0, b: y!.playerId, bSlot: 0 },
           Snoop: { action: 'Snoop', targetId: target.playerId, slot: 0 },
           'Not My Job': { action: 'Not My Job', fromId: x!.playerId, fromSlot: 0, toId: y!.playerId },
-          "Landlord's Notice": { action: "Landlord's Notice", targetId: r.actor.playerId },
+          "Landlord's Notice": { action: "Landlord's Notice", targetId: target.playerId },
           "I'm Busy": { action: "I'm Busy", targetId: target.playerId },
         };
         const outcome = r.actor
