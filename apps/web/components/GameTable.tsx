@@ -70,6 +70,7 @@ export function GameTable({ game }: { game: Game }) {
   if (view.phase === 'reveal') {
     return (
       <div className="table-felt">
+        <PlayerPresenceBar lobby={lobby} meId={me.playerId} />
         <RevealScreen game={game} nameOf={nameOf} colorOf={colorOf} sound={sound} />
         <FloatingReactions reactions={game.reactions} nameOf={nameOf} />
         <div className="table-footer-controls">
@@ -121,6 +122,7 @@ export function GameTable({ game }: { game: Game }) {
         myId={myId}
       />
       <HouseRuleBadges toggles={lobby.toggles} />
+      <PlayerPresenceBar lobby={lobby} meId={myId} />
 
       {view.phase === 'setupPeek' ? (
         <SetupPeekPanel game={game} peeks={peeks} inFlight={inFlight} sendGuarded={sendGuarded} />
@@ -186,6 +188,30 @@ export function GameTable({ game }: { game: Game }) {
         <SoundToggle sound={sound} className="table-sound-toggle" />
         <ReactionBar onSend={game.sendReaction} />
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// In-game presence: mirrors lobby connectivity while the table is visible.
+
+function PlayerPresenceBar({ lobby, meId }: { lobby: NonNullable<Game['lobby']>; meId: PlayerId }) {
+  return (
+    <div className="table-presence" aria-label="Player connection status">
+      {lobby.players.map((p) => (
+        <span key={p.id} className="table-presence-player" data-connected={p.connected}>
+          <span
+            className="conn-dot"
+            data-connected={p.connected}
+            role="img"
+            aria-label={p.connected ? `${p.name} is connected` : `${p.name} is disconnected`}
+          />
+          <span className="table-presence-name">
+            {p.name}
+            {p.id === meId ? ' (you)' : ''}
+          </span>
+        </span>
+      ))}
     </div>
   );
 }

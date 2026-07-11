@@ -196,7 +196,7 @@ async function main(): Promise<void> {
 
   console.log('== join 3 players ==');
   const alice = new Client('alice');
-  const bob = new Client('bob');
+  let bob = new Client('bob');
   const carol = new Client('carol');
   for (const [c, color] of [
     [alice, '#F5A62B'],
@@ -213,6 +213,37 @@ async function main(): Promise<void> {
   assert(alice.lobby!['players'][0].isHost === true, 'first joiner is host');
   assert(alice.lobby!['players'].every((p: Json) => p['connected'] === true), 'all connection dots green');
   assert(alice.lobby!['toggles'].deckCount === 2, 'room creation selected two decks');
+
+  console.log('== graceful lobby disconnect and reconnect ==');
+  {
+    const bobToken = bob.token;
+    const bobId = bob.playerId;
+    bob.ws.close();
+    await alice.waitFor(
+      (m) =>
+        m['type'] === 'lobby' &&
+        m['lobby'].players.length === 3 &&
+        m['lobby'].players.find((p: Json) => p.id === bobId)?.connected === false,
+      'bob graceful close shows disconnected',
+    );
+    assert(true, 'tab-style close marks bob disconnected before game start');
+
+    const bobRejoined = new Client('bob-rejoined-lobby');
+    await bobRejoined.connect();
+    const rejoined = bobRejoined.waitFor((m) => m['type'] === 'joined', 'lobby rejoin');
+    bobRejoined.send({ type: 'join', roomCode: code, name: 'bob', color: '#8FA2DC', token: bobToken });
+    await rejoined;
+    assert(bobRejoined.playerId === bobId, 'lobby token rejoin keeps bob in the same seat/playerId');
+    await alice.waitFor(
+      (m) =>
+        m['type'] === 'lobby' &&
+        m['lobby'].players.length === 3 &&
+        m['lobby'].players.find((p: Json) => p.id === bobId)?.connected === true,
+      'bob graceful rejoin shows connected',
+    );
+    assert(true, 'graceful reconnect restores bob without a duplicate seat');
+    bob = bobRejoined;
+  }
 
   console.log('== toggles ==');
   const nonHostErr = bob.waitFor((m) => m['type'] === 'error', 'notHost error');
