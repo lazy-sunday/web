@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CardName, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
+import { renderSlotsFor } from '../lib/slots';
 import { CardBack, CardFace } from './Card';
 
 type Game = ReturnType<typeof useGameSocket>;
@@ -303,7 +304,7 @@ function GiftPicker({ game }: { game: Game }) {
   const [sending, setSending] = useState(false);
   if (!view || !me) return null;
   const myView = view.players.find((p) => p.id === me.playerId);
-  const listSize = myView?.listSize ?? 0;
+  const slots = renderSlotsFor(myView);
 
   return (
     <div className="modal-scrim" role="dialog" aria-modal="true" aria-label="Give a card">
@@ -315,22 +316,27 @@ function GiftPicker({ game }: { game: Game }) {
             remember what you gave; they never see it.
           </p>
           <div className="my-list-row slot-picker-row" role="group" aria-label="Pick a card to give away">
-            {Array.from({ length: listSize }).map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                className="slot-btn"
-                data-pickable
-                disabled={sending}
-                aria-label={`Give away card in slot ${i + 1}`}
-                onClick={() => {
-                  setSending(true);
-                  game.sendCommand({ type: 'giveCard', slot: i });
-                }}
-              >
-                <CardBack />
-              </button>
-            ))}
+            {slots.map((slot) => {
+              if (!slot.occupied || slot.cardSlot === null) {
+                return <span key={slot.visualSlot} className="slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
+              }
+              return (
+                <button
+                  key={slot.visualSlot}
+                  type="button"
+                  className="slot-btn"
+                  data-pickable
+                  disabled={sending}
+                  aria-label={`Give away card in slot ${slot.visualSlot + 1}`}
+                  onClick={() => {
+                    setSending(true);
+                    game.sendCommand({ type: 'giveCard', slot: slot.cardSlot! });
+                  }}
+                >
+                  <CardBack />
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyCommand } from '../src/round.js';
+import { viewFor } from '../src/view.js';
 import { doneTop, drawAndPlayAction, err, evt, makeRound, ok, play, player } from './helpers.js';
 
 // Default DONE top in these fixtures is Feed the Cat.
@@ -18,11 +19,27 @@ describe('"Done it!" quick discard (§6)', () => {
   it('own card, correct: it stays discarded and the list shrinks by one', () => {
     const r = ok(applyCommand(base(), { type: 'slap', player: 'a', owner: 'a', slot: 0 }));
     expect(player(r.state, 'a').list.map((c) => c.name)).toEqual(['Nap', 'Snoop']);
+    expect(player(r.state, 'a').slotPositions).toEqual([1, 2]);
+    expect(viewFor(r.state, 'a').players.find((p) => p.id === 'a')!.listSlots).toEqual([false, true, true]);
     expect(doneTop(r.state).name).toBe('Feed the Cat');
     expect(r.state.done).toHaveLength(2);
     const e = evt(r.events, 'slapCorrect');
     expect(e.giftPending).toBe(false);
     expect(r.state.pendingGift).toBeNull();
+  });
+
+  it('own middle-slot correct slap leaves only that visual slot empty', () => {
+    const s = makeRound({
+      players: [
+        { id: 'a', list: ['Nap', 'Feed the Cat', 'Snoop'] },
+        { id: 'b', list: ['Water the Plants'] },
+      ],
+      done: ['Feed the Cat'],
+    });
+    const r = ok(applyCommand(s, { type: 'slap', player: 'a', owner: 'a', slot: 1 }));
+    expect(player(r.state, 'a').list.map((c) => c.name)).toEqual(['Nap', 'Snoop']);
+    expect(player(r.state, 'a').slotPositions).toEqual([0, 2]);
+    expect(viewFor(r.state, 'a').players.find((p) => p.id === 'a')!.listSlots).toEqual([true, false, true]);
   });
 
   it('works out of turn — any player may slap at any moment', () => {
@@ -44,6 +61,7 @@ describe('"Done it!" quick discard (§6)', () => {
     const slapped = ok(applyCommand(s, { type: 'slap', player: 'a', owner: 'b', slot: 0 }));
     expect(evt(slapped.events, 'slapCorrect').giftPending).toBe(true);
     expect(player(slapped.state, 'b').list).toHaveLength(1); // gap open
+    expect(viewFor(slapped.state, 'a').players.find((p) => p.id === 'b')!.listSlots).toEqual([false, true]);
     expect(slapped.state.pendingGift).toEqual({ from: 'a', to: 'b', insertIndex: 0 });
 
     // everything else is paused until the gift is given
@@ -57,7 +75,26 @@ describe('"Done it!" quick discard (§6)', () => {
     expect(given).toEqual({ type: 'giftGiven', from: 'a', to: 'b', toSlot: 0 });
     expect(player(gifted.state, 'a').list.map((c) => c.name)).toEqual(['Feed the Cat', 'Nap']);
     expect(player(gifted.state, 'b').list.map((c) => c.name)).toEqual(['Snoop', 'Vacuum the Living Room']);
+    expect(viewFor(gifted.state, 'a').players.find((p) => p.id === 'b')!.listSlots).toEqual([true, true]);
     expect(gifted.events.every((e) => e.type !== 'peek')).toBe(true);
+  });
+
+  it("opponent's middle-slot gift fills the same visual gap", () => {
+    const s = makeRound({
+      players: [
+        { id: 'a', list: ['Feed the Cat', 'Nap', 'Snoop'] },
+        { id: 'b', list: ['Nap', 'Feed the Cat', 'Vacuum the Living Room'] },
+      ],
+      done: ['Feed the Cat'],
+    });
+    const slapped = ok(applyCommand(s, { type: 'slap', player: 'a', owner: 'b', slot: 1 }));
+    expect(slapped.state.pendingGift).toEqual({ from: 'a', to: 'b', insertIndex: 1 });
+    expect(viewFor(slapped.state, 'a').players.find((p) => p.id === 'b')!.listSlots).toEqual([true, false, true]);
+
+    const gifted = ok(applyCommand(slapped.state, { type: 'giveCard', player: 'a', slot: 2 }));
+    expect(player(gifted.state, 'b').list.map((c) => c.name)).toEqual(['Nap', 'Snoop', 'Vacuum the Living Room']);
+    expect(player(gifted.state, 'b').slotPositions).toEqual([0, 1, 2]);
+    expect(viewFor(gifted.state, 'a').players.find((p) => p.id === 'b')!.listSlots).toEqual([true, true, true]);
   });
 
   it('wrong: the card returns face-down (identity was seen) and the slapper draws a penalty card, unseen', () => {
@@ -69,6 +106,7 @@ describe('"Done it!" quick discard (§6)', () => {
     expect(player(r.state, 'c').list).toHaveLength(2); // original + penalty
     expect(player(r.state, 'c').list[0]!.name).toBe('Water the Plants'); // returned in place
     expect(player(r.state, 'c').list[1]!.name).toBe('Take Out the Trash'); // from deck top
+    expect(viewFor(r.state, 'a').players.find((p) => p.id === 'c')!.listSlots).toEqual([true, true]);
     expect(doneTop(r.state).name).toBe('Feed the Cat'); // pile unchanged
     // the penalty card is unseen — no peek event
     expect(r.events.every((ev) => ev.type !== 'peek' && ev.type !== 'drawnCard')).toBe(true);

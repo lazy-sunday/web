@@ -957,6 +957,27 @@ select {
   width: 88px;
 }
 
+.slot-gap {
+  flex-shrink: 0;
+  width: 72px;
+  aspect-ratio: 695 / 949;
+  min-height: 44px;
+  border: 2px dashed rgba(71, 37, 15, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.2);
+  opacity: 0.72;
+}
+
+.opp-slot.slot-gap {
+  width: 44px;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.slot-gap-lg {
+  width: 88px;
+}
+
 .slot-btn:not(:disabled):active {
   transform: scale(0.97);
 }

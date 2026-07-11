@@ -9,6 +9,8 @@ export interface PlayerView {
   id: PlayerId;
   /** Number of face-down cards in their chore list. Identities are never included. */
   listSize: number;
+  /** Public occupancy only: true means a card exists at that visual table slot. */
+  listSlots: boolean[];
   skipNextTurn: boolean;
   setupPeeked: boolean;
 }
@@ -53,6 +55,7 @@ export function viewFor(state: RoundState, playerId: PlayerId): RoundView {
     players: state.players.map((p) => ({
       id: p.id,
       listSize: p.list.length,
+      listSlots: listSlotsOf(p.slotPositions),
       skipNextTurn: p.skipNextTurn,
       setupPeeked: p.setupPeeked,
     })),
@@ -73,6 +76,14 @@ export function viewFor(state: RoundState, playerId: PlayerId): RoundView {
       : null,
     result: state.result ? structuredClone(state.result) : null,
   };
+}
+
+function listSlotsOf(slotPositions: number[]): boolean[] {
+  if (slotPositions.length === 0) return [];
+  const maxSlot = Math.max(...slotPositions);
+  const slots = Array.from({ length: maxSlot + 1 }, () => false);
+  for (const slot of slotPositions) slots[slot] = true;
+  return slots;
 }
 
 /** Events routed to ONE player only — their `to` field is a socket address, not a
