@@ -22,6 +22,8 @@ export interface PlayerRoundState {
   id: PlayerId;
   /** The face-down chore list, in slot order. Identities never leave the server. */
   list: Card[];
+  /** Visual table positions for each card in `list`, kept parallel to the list. */
+  slotPositions: number[];
   /** Set by "I'm Busy" (§5): "their next turn is skipped". Saturating, not stacking:
    *  a second "I'm Busy" before that turn re-skips the same, already-skipped next turn. */
   skipNextTurn: boolean;
@@ -43,7 +45,7 @@ export interface PendingAction {
 export interface PendingGift {
   from: PlayerId;
   to: PlayerId;
-  /** The gap left by the discarded card; the gift is inserted here. */
+  /** The visual gap left by the discarded card; the gift is inserted here. */
   insertIndex: number;
 }
 

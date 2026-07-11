@@ -157,6 +157,11 @@ describe('view redaction', () => {
     }
     expect(view.doneTop!.id).toBe(s.done[0]!.id);
     expect(view.players.map((p) => p.listSize)).toEqual([6, 6, 6]);
+    expect(view.players.map((p) => p.listSlots)).toEqual([
+      [true, true, true, true, true, true],
+      [true, true, true, true, true, true],
+      [true, true, true, true, true, true],
+    ]);
     expect(view.myDrawnCard).toBeNull();
   });
 

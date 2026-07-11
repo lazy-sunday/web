@@ -14,6 +14,7 @@ import { usePeeks } from '../lib/usePeeks';
 import { useCountdown } from '../lib/useCountdown';
 import { useSound } from '../lib/useSound';
 import { useGameSounds } from '../lib/useGameSounds';
+import { renderSlotsFor } from '../lib/slots';
 import { ActionModal } from './ActionModal';
 import { CardBack, CardFace } from './Card';
 import { FloatingReactions, ReactionBar } from './ReactionBar';
@@ -136,6 +137,7 @@ export function GameTable({ game }: { game: Game }) {
                 name={nameOf(p.id)}
                 color={colorOf(p.id)}
                 listSize={p.listSize}
+                slots={renderSlotsFor(p)}
                 isCurrent={view.currentPlayer === p.id}
                 isCaller={view.caller === p.id}
                 peeks={peeks}
@@ -161,6 +163,7 @@ export function GameTable({ game }: { game: Game }) {
           <MyRow
             game={game}
             myListSize={myListSize}
+            slots={renderSlotsFor(myPlayerView)}
             isMyTurn={isMyTurn}
             isCaller={view.caller === myId}
             peeks={peeks}
@@ -297,7 +300,7 @@ function SetupPeekPanel({
 
   const myView = view.players.find((p) => p.id === me.playerId);
   const alreadyPeeked = myView?.setupPeeked ?? false;
-  const listSize = myView?.listSize ?? 6;
+  const slots = renderSlotsFor(myView);
   const othersWaiting = view.players.filter((p) => p.id !== me.playerId && !p.setupPeeked);
 
   function toggleSlot(i: number) {
@@ -325,22 +328,25 @@ function SetupPeekPanel({
       </p>
 
       <div className="my-list-row" role="group" aria-label="Your chore list">
-        {Array.from({ length: listSize }).map((_, i) => {
-          const peeked = me ? peeks.peekAt(me.playerId, i) : null;
-          const isSelected = selected.includes(i);
+        {slots.map((slot) => {
+          if (!slot.occupied || slot.cardSlot === null) {
+            return <span key={slot.visualSlot} className="slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
+          }
+          const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
+          const isSelected = selected.includes(slot.cardSlot);
           return (
             <button
-              key={i}
+              key={slot.visualSlot}
               type="button"
               className="slot-btn"
               data-selected={isSelected}
               disabled={alreadyPeeked || inFlight}
               aria-label={
                 peeked
-                  ? `Your card, slot ${i + 1}, revealed: ${peeked.name}`
-                  : `Your card, slot ${i + 1}, face down${isSelected ? ', selected for peek' : ''}`
+                  ? `Your card, slot ${slot.visualSlot + 1}, revealed: ${peeked.name}`
+                  : `Your card, slot ${slot.visualSlot + 1}, face down${isSelected ? ', selected for peek' : ''}`
               }
-              onClick={() => toggleSlot(i)}
+              onClick={() => toggleSlot(slot.cardSlot!)}
             >
               {peeked ? <CardFace name={peeked.name as CardName} /> : <CardBack />}
             </button>
@@ -376,6 +382,7 @@ function OpponentRow({
   name,
   color,
   listSize,
+  slots,
   isCurrent,
   isCaller,
   peeks,
@@ -387,6 +394,7 @@ function OpponentRow({
   name: string;
   color: string;
   listSize: number;
+  slots: ReturnType<typeof renderSlotsFor>;
   isCurrent: boolean;
   isCaller: boolean;
   peeks: ReturnType<typeof usePeeks>;
@@ -404,12 +412,15 @@ function OpponentRow({
         <span className="card-count">{listSize}</span>
       </div>
       <div className="opponent-cards" role="group" aria-label={`${name}'s chore list`}>
-        {Array.from({ length: listSize }).map((_, i) => {
-          const peeked = peeks.peekAt(playerId, i);
-          const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === i;
+        {slots.map((slot) => {
+          if (!slot.occupied || slot.cardSlot === null) {
+            return <span key={slot.visualSlot} className="opp-slot slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
+          }
+          const peeked = peeks.peekAt(playerId, slot.cardSlot);
+          const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === slot.cardSlot;
           return (
             <button
-              key={i}
+              key={slot.visualSlot}
               type="button"
               className="opp-slot"
               data-slap-pickable={canSelectSlapTarget}
@@ -417,11 +428,11 @@ function OpponentRow({
               disabled={!canSelectSlapTarget}
               aria-label={
                 peeked
-                  ? `${name}'s card, slot ${i + 1}, revealed to you: ${peeked.name}${canSelectSlapTarget ? ' — select for Done it!' : ''}`
-                  : `${name}'s card, slot ${i + 1}, face down${canSelectSlapTarget ? ' — select for Done it!' : ''}`
+                  ? `${name}'s card, slot ${slot.visualSlot + 1}, revealed to you: ${peeked.name}${canSelectSlapTarget ? ' — select for Done it!' : ''}`
+                  : `${name}'s card, slot ${slot.visualSlot + 1}, face down${canSelectSlapTarget ? ' — select for Done it!' : ''}`
               }
               aria-pressed={canSelectSlapTarget ? selected : undefined}
-              onClick={() => onSelectSlapTarget(playerId, i)}
+              onClick={() => onSelectSlapTarget(playerId, slot.cardSlot!)}
             >
               {peeked ? <CardFace name={peeked.name as CardName} className="card-img-sm" /> : <CardBack className="card-img-sm" />}
             </button>
@@ -550,6 +561,7 @@ function CenterPiles({
 function MyRow({
   game,
   myListSize,
+  slots,
   isMyTurn,
   isCaller,
   peeks,
@@ -562,6 +574,7 @@ function MyRow({
 }: {
   game: Game;
   myListSize: number;
+  slots: ReturnType<typeof renderSlotsFor>;
   isMyTurn: boolean;
   isCaller: boolean;
   peeks: ReturnType<typeof usePeeks>;
@@ -589,31 +602,34 @@ function MyRow({
       </div>
 
       <div className="my-list-row" role="group" aria-label="Your chore list">
-        {Array.from({ length: myListSize }).map((_, i) => {
-          const peeked = me ? peeks.peekAt(me.playerId, i) : null;
-          const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === i;
+        {slots.map((slot) => {
+          if (!slot.occupied || slot.cardSlot === null) {
+            return <span key={slot.visualSlot} className="slot-gap slot-gap-lg" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
+          }
+          const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
+          const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === slot.cardSlot;
           const slapPickable = !pickable && canSelectSlapTarget;
           return (
             <button
-              key={i}
+              key={slot.visualSlot}
               type="button"
               className="slot-btn slot-btn-lg"
               data-pickable={pickable}
               data-slap-pickable={slapPickable}
               data-slap-selected={selected}
-              data-just-placed={justPlacedSlot === i}
+              data-just-placed={justPlacedSlot === slot.cardSlot}
               disabled={pickable ? inFlight : !slapPickable}
               aria-pressed={slapPickable ? selected : undefined}
               aria-label={
                 peeked
-                  ? `Your card, slot ${i + 1}, revealed: ${peeked.name}${pickable ? ' — tap to place card here' : slapPickable ? ' — select for Done it!' : ''}`
-                  : `Your card, slot ${i + 1}, face down${pickable ? ' — tap to place card here' : slapPickable ? ' — select for Done it!' : ''}`
+                  ? `Your card, slot ${slot.visualSlot + 1}, revealed: ${peeked.name}${pickable ? ' — tap to place card here' : slapPickable ? ' — select for Done it!' : ''}`
+                  : `Your card, slot ${slot.visualSlot + 1}, face down${pickable ? ' — tap to place card here' : slapPickable ? ' — select for Done it!' : ''}`
               }
               onClick={() => {
                 if (pickable) {
-                  onPickSlot(i);
+                  onPickSlot(slot.cardSlot!);
                 } else if (slapPickable) {
-                  onSelectSlapTarget(me.playerId, i);
+                  onSelectSlapTarget(me.playerId, slot.cardSlot!);
                 }
               }}
             >

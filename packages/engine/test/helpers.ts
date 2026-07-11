@@ -50,6 +50,7 @@ export function makeRound(opts: MakeRoundOpts, pool = new Pool()): RoundState {
   const players = opts.players.map((p) => ({
     id: p.id,
     list: pool.takeAll(p.list),
+    slotPositions: p.list.map((_, i) => i),
     skipNextTurn: p.skip ?? false,
     setupPeeked: true,
   }));

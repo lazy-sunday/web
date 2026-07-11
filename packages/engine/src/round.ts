@@ -10,6 +10,7 @@ import type {
   CommandResult,
   EngineEvent,
   ErrorCode,
+  PlayerRoundState,
   PlayerId,
   RoundResult,
   RoundState,
@@ -44,6 +45,7 @@ export function createRound(config: RoundConfig): RoundState {
   const players = config.players.map((id) => ({
     id,
     list: deck.splice(0, CARDS_PER_PLAYER),
+    slotPositions: Array.from({ length: CARDS_PER_PLAYER }, (_, i) => i),
     skipNextTurn: false,
     setupPeeked: false,
   }));
@@ -131,7 +133,7 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
         // §9.2: an empty-list player's draw-and-keep "only adds a card back" —
         // there is no replaced card to discard.
         if (cmd.slot !== 0) return fail('invalidSlot', 'your list is empty — the card goes to slot 0');
-        player.list.push(drawn);
+        appendCard(player, drawn);
         state.drawnCard = null;
         events.push({ type: 'kept', player: player.id, slot: 0, discarded: null });
         endTurn(state, events);
@@ -185,9 +187,9 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
         // §5 Knock It Out: "you may immediately discard it to the DONE pile (any value)".
         // §9.5: counts as a normal discard (can set up quick-discard matches) but
         // triggers no further action.
-        const [card] = player.list.splice(slot, 1);
-        state.done.push(card!);
-        events.push({ type: 'knockedOut', player: player.id, card: card! });
+        const { card } = removeCard(player, slot);
+        state.done.push(card);
+        events.push({ type: 'knockedOut', player: player.id, card });
       } else {
         events.push({ type: 'knockItOutKept', player: player.id });
       }
@@ -256,10 +258,9 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
       if (!gift || gift.from !== player.id) return fail('wrongPhase', 'you owe no card');
       if (!isSlot(player.list, cmd.slot)) return fail('invalidSlot', 'no card in that slot');
       // §6 / §9.7: the giver chooses; passed face-down; receiver may not look.
-      const [card] = player.list.splice(cmd.slot, 1);
+      const { card } = removeCard(player, cmd.slot);
       const receiver = state.players.find((p) => p.id === gift.to)!;
-      const at = Math.min(gift.insertIndex, receiver.list.length);
-      receiver.list.splice(at, 0, card!);
+      const at = insertCardAtVisualSlot(receiver, gift.insertIndex, card);
       state.pendingGift = null;
       events.push({ type: 'giftGiven', from: gift.from, to: gift.to, toSlot: at });
       return { ok: true, state, events };
@@ -376,9 +377,9 @@ function handleActionInput(
       }
       if (callerLocked(from.id) || callerLocked(to.id)) return fail('callerLocked', "the caller's list is locked (§7)");
       if (!isSlot(from.list, input.fromSlot)) return fail('invalidSlot', 'no card in that slot');
-      const [card] = from.list.splice(input.fromSlot, 1);
-      to.list.push(card!);
-      events.push({ type: 'notMyJobbed', player: playerId, fromId: from.id, fromSlot: input.fromSlot, toId: to.id, toSlot: to.list.length - 1 });
+      const { card } = removeCard(from, input.fromSlot);
+      const toSlot = appendCard(to, card);
+      events.push({ type: 'notMyJobbed', player: playerId, fromId: from.id, fromSlot: input.fromSlot, toId: to.id, toSlot });
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -394,8 +395,8 @@ function handleActionInput(
       if (!drawFromDeck(state, events)) {
         return fail('notPerformable', 'no card left to serve — cancel the action instead');
       }
-      target.list.push(state.deck.pop()!);
-      events.push({ type: 'landlordsNoticed', player: playerId, targetId: target.id, slot: target.list.length - 1 });
+      const slot = appendCard(target, state.deck.pop()!);
+      events.push({ type: 'landlordsNoticed', player: playerId, targetId: target.id, slot });
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -462,16 +463,16 @@ function handleSlap(
   const card = owner.list[cmd.slot]!;
   if (card.name === top.name) {
     // Correct: the card stays discarded (face-up on DONE — identity now public).
-    owner.list.splice(cmd.slot, 1);
-    state.done.push(card);
+    const removed = removeCard(owner, cmd.slot);
+    state.done.push(removed.card);
     if (isOwn) {
       // §6: your own card, correct — your list shrinks by one.
-      events.push({ type: 'slapCorrect', player: slapperId, owner: owner.id, slot: cmd.slot, card, giftPending: false });
+      events.push({ type: 'slapCorrect', player: slapperId, owner: owner.id, slot: cmd.slot, card: removed.card, giftPending: false });
     } else {
       // §6: an opponent's card, correct — you must immediately give them ONE of
       // your own cards (your choice, face-down) to fill the gap.
-      state.pendingGift = { from: slapperId, to: owner.id, insertIndex: cmd.slot };
-      events.push({ type: 'slapCorrect', player: slapperId, owner: owner.id, slot: cmd.slot, card, giftPending: true });
+      state.pendingGift = { from: slapperId, to: owner.id, insertIndex: removed.visualSlot };
+      events.push({ type: 'slapCorrect', player: slapperId, owner: owner.id, slot: cmd.slot, card: removed.card, giftPending: true });
     }
   } else {
     // §6 wrong: the slapped card returns face-down to its owner's list (it hit the
@@ -479,7 +480,7 @@ function handleSlap(
     // slapper draws one penalty card from the deck onto their own list, unseen
     // (a penalty draw is not one of the granted peeks).
     const penaltyAvailable = drawFromDeck(state, events);
-    if (penaltyAvailable) slapper.list.push(state.deck.pop()!);
+    if (penaltyAvailable) appendCard(slapper, state.deck.pop()!);
     events.push({ type: 'slapWrong', player: slapperId, owner: owner.id, slot: cmd.slot, card, penaltyDrawn: penaltyAvailable });
   }
   return { ok: true, state, events };
@@ -499,10 +500,9 @@ function handleForceSkip(
 
   // Timed-out gift: the obligation must still be met — give the lowest slot.
   if (state.pendingGift?.from === playerId) {
-    const [card] = player.list.splice(0, 1);
+    const { card } = removeCard(player, 0);
     const receiver = state.players.find((p) => p.id === state.pendingGift!.to)!;
-    const at = Math.min(state.pendingGift.insertIndex, receiver.list.length);
-    receiver.list.splice(at, 0, card!);
+    const at = insertCardAtVisualSlot(receiver, state.pendingGift.insertIndex, card);
     events.push({ type: 'giftGiven', from: playerId, to: receiver.id, toSlot: at });
     state.pendingGift = null;
     return { ok: true, state, events };
@@ -631,6 +631,30 @@ function current(state: RoundState) {
 
 function isSlot(list: Card[], slot: number): boolean {
   return Number.isInteger(slot) && slot >= 0 && slot < list.length;
+}
+
+function removeCard(player: PlayerRoundState, slot: number): { card: Card; visualSlot: number } {
+  const [card] = player.list.splice(slot, 1);
+  const [visualSlot] = player.slotPositions.splice(slot, 1);
+  return { card: card!, visualSlot: visualSlot ?? slot };
+}
+
+function appendCard(player: PlayerRoundState, card: Card): number {
+  player.list.push(card);
+  player.slotPositions.push(nextVisualSlot(player));
+  return player.list.length - 1;
+}
+
+function insertCardAtVisualSlot(player: PlayerRoundState, visualSlot: number, card: Card): number {
+  const at = player.slotPositions.findIndex((slot) => slot > visualSlot);
+  const insertAt = at === -1 ? player.list.length : at;
+  player.list.splice(insertAt, 0, card);
+  player.slotPositions.splice(insertAt, 0, visualSlot);
+  return insertAt;
+}
+
+function nextVisualSlot(player: PlayerRoundState): number {
+  return player.slotPositions.length === 0 ? 0 : Math.max(...player.slotPositions) + 1;
 }
 
 function requireTurn(

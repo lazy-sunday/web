@@ -22,6 +22,7 @@ import {
   slotOwnerFor,
   type ActionPicks,
 } from '../lib/actionMeta';
+import { renderSlotsFor } from '../lib/slots';
 import { CardBack, CardFace } from './Card';
 
 type Game = ReturnType<typeof useGameSocket>;
@@ -169,10 +170,9 @@ export function ActionModal({
         ) : (
           <SlotPicker
             owner={slotOwnerFor(flow, stepIndex, myId, picks)}
-            listSize={
-              (step.owner === 'self' ? view.players.find((p) => p.id === myId) : view.players.find((p) => p.id === slotOwnerFor(flow, stepIndex, myId, picks)))
-                ?.listSize ?? 0
-            }
+            slots={renderSlotsFor(
+              step.owner === 'self' ? view.players.find((p) => p.id === myId) : view.players.find((p) => p.id === slotOwnerFor(flow, stepIndex, myId, picks)),
+            )}
             ownerName={step.owner === 'self' ? 'your' : `${nameOf(slotOwnerFor(flow, stepIndex, myId, picks))}'s`}
             peeks={peeks}
             disabled={sending}
@@ -255,14 +255,14 @@ function PlayerPicker({
 
 function SlotPicker({
   owner,
-  listSize,
+  slots,
   ownerName,
   peeks,
   disabled,
   onPick,
 }: {
   owner: PlayerId;
-  listSize: number;
+  slots: ReturnType<typeof renderSlotsFor>;
   ownerName: string;
   peeks: ReturnType<typeof usePeeks>;
   disabled: boolean;
@@ -270,23 +270,26 @@ function SlotPicker({
 }) {
   return (
     <div className="my-list-row slot-picker-row" role="group" aria-label={`Pick one of ${ownerName} cards`}>
-      {Array.from({ length: listSize }).map((_, i) => {
-        const peeked = peeks.peekAt(owner, i);
+      {slots.map((slot) => {
+        if (!slot.occupied || slot.cardSlot === null) {
+          return <span key={slot.visualSlot} className="slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
+        }
+        const peeked = peeks.peekAt(owner, slot.cardSlot);
         return (
           <button
-            key={i}
+            key={slot.visualSlot}
             type="button"
             className="slot-btn"
             data-pickable
             disabled={disabled}
-            aria-label={peeked ? `Card revealed to you: ${peeked.name}` : `${ownerName} card, slot ${i + 1}, face down`}
-            onClick={() => onPick(i)}
+            aria-label={peeked ? `Card revealed to you: ${peeked.name}` : `${ownerName} card, slot ${slot.visualSlot + 1}, face down`}
+            onClick={() => onPick(slot.cardSlot!)}
           >
             {peeked ? <CardFace name={peeked.name as CardName} /> : <CardBack />}
           </button>
         );
       })}
-      {listSize === 0 && <p className="empty-seats">No cards there.</p>}
+      {slots.length === 0 && <p className="empty-seats">No cards there.</p>}
     </div>
   );
 }
