@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDeck, CARD_SPECS } from '../src/cards.js';
+import { buildDeck, CARD_SPECS, MAX_DECK_COUNT, MIN_DECK_COUNT } from '../src/cards.js';
 import { createRound, applyCommand } from '../src/round.js';
 import { viewFor } from '../src/view.js';
 import { err, evt, evts, ok } from './helpers.js';
@@ -39,6 +39,20 @@ describe('deck composition (§2)', () => {
     expect(new Set(ids).size).toBe(54);
   });
 
+  it('scales every card copy across multiple decks and keeps ids unique', () => {
+    const deck = buildDeck(2);
+    expect(deck).toHaveLength(108);
+    expect(new Set(deck.map((c) => c.id)).size).toBe(108);
+    expect(deck.filter((c) => c.name === 'Nap')).toHaveLength(4);
+    expect(deck.filter((c) => c.name === 'Check the List')).toHaveLength(8);
+  });
+
+  it('rejects deck counts outside the supported house-rule range', () => {
+    expect(() => buildDeck(MIN_DECK_COUNT - 1)).toThrow();
+    expect(() => buildDeck(MAX_DECK_COUNT + 1)).toThrow();
+    expect(() => buildDeck(1.5)).toThrow();
+  });
+
   it('marks chores and actions correctly', () => {
     for (const spec of CARD_SPECS) {
       const isAction = [
@@ -57,6 +71,16 @@ describe('createRound / dealing (§3)', () => {
     expect(s.done).toHaveLength(1);
     expect(s.deck).toHaveLength(54 - 18 - 1);
     expect(s.phase).toBe('setupPeek');
+  });
+
+  it('deals from the configured number of complete decks', () => {
+    const s = createRound({ players: ['a', 'b', 'c'], startingPlayer: 0, seed: 7, deckCount: 2 });
+    expect(s.deck).toHaveLength(108 - 18 - 1);
+    expect(new Set([
+      ...s.deck.map((c) => c.id),
+      ...s.done.map((c) => c.id),
+      ...s.players.flatMap((p) => p.list.map((c) => c.id)),
+    ]).size).toBe(108);
   });
 
   it('supports 2 and 7 players, rejects 1 and 8', () => {

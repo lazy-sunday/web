@@ -164,6 +164,27 @@ function LobbyView({ game, code }: { game: ReturnType<typeof useGameSocket>; cod
 
       <h3 style={{ marginTop: 20 }}>House rules</h3>
       <div className="toggle-list">
+        <div className="toggle-row">
+          <span className="toggle-label">
+            Decks per room
+            <span className="toggle-sub">Complete decks used in every round</span>
+          </span>
+          <select
+            className="timeout-select"
+            value={lobby.toggles.deckCount}
+            disabled={!iAmHost || lobby.status !== 'lobby'}
+            aria-label="Decks per room"
+            onChange={(e) =>
+              game.send({ type: 'setToggle', toggle: 'deckCount', value: Number(e.target.value) })
+            }
+          >
+            {[1, 2, 3].map((count) => (
+              <option key={count} value={count}>
+                {count} {count === 1 ? 'deck' : 'decks'}
+              </option>
+            ))}
+          </select>
+        </div>
         <ToggleRow
           label="Match to 100"
           sub="First past 100 ends the match; lowest total wins"
@@ -286,4 +307,3 @@ function ToggleRow({
     </div>
   );
 }
-

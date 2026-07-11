@@ -2,7 +2,13 @@
 
 import { randomBytes, randomInt } from 'node:crypto';
 import type { WebSocket } from 'ws';
-import type { PlayerId, RoundState, SessionState } from '@lazy-sunday/engine';
+import {
+  DEFAULT_DECK_COUNT,
+  isValidDeckCount,
+  type PlayerId,
+  type RoundState,
+  type SessionState,
+} from '@lazy-sunday/engine';
 import type { LobbyState, RoomStatus, RoomToggles } from './protocol.js';
 
 /** Unambiguous room-code alphabet: no 0/O, no 1/I. */
@@ -55,7 +61,8 @@ export interface Room {
 
 const rooms = new Map<string, Room>();
 
-export function createRoom(): Room {
+export function createRoom(deckCount = DEFAULT_DECK_COUNT): Room {
+  if (!isValidDeckCount(deckCount)) throw new Error('invalid deck count');
   let code: string;
   do {
     code = generateCode();
@@ -65,6 +72,7 @@ export function createRoom(): Room {
     status: 'lobby',
     players: [],
     toggles: {
+      deckCount,
       matchTo100: false,
       greatEscape: false,
       instantNotMe: false,

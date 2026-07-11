@@ -8,7 +8,7 @@ The engine implements [lazy-sunday-rules-v1.md](../lazy-sunday-rules-v1.md). Sec
 
 The engine exports from `src/index.ts`. The core entry points are:
 
-- `createRound(config)`: creates a new shuffled round.
+- `createRound(config)`: creates a new shuffled round. `config.deckCount` may select 1–3 complete standard decks; omitted means 1.
 - `applyCommand(state, command)`: applies one player or server command and returns either a new state plus events or a typed error.
 - `viewFor(state, playerId)`: builds a redacted `RoundView` for one player.
 - `eventVisibleTo(event, playerId)`: says whether one player may receive an event.
@@ -30,6 +30,8 @@ The engine exports from `src/index.ts`. The core entry points are:
 - Revealed result.
 - RNG state for deterministic reshuffles and testability.
 - `instantNotMe`, the optional house-rule toggle.
+
+Multi-deck rounds are an explicit house-rule variant. Each selected deck is a complete copy of the standard 54-card composition; per-player list size and all gameplay rules remain unchanged. The immutable rules file continues to describe the default one-deck game.
 
 The engine clones input state inside `applyCommand`, mutates the clone, and returns it. Callers should always replace their stored state with the returned state on success.
 

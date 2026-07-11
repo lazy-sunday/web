@@ -4,8 +4,8 @@ This document traces how data moves through the app from room creation to reveal
 
 ## Room Creation
 
-1. The browser calls `POST /rooms`.
-2. `apps/server/src/main.ts` calls `createRoom`.
+1. The browser calls `POST /rooms`, optionally sending `{ "deckCount": 1 | 2 | 3 }`.
+2. `apps/server/src/main.ts` validates the optional deck count and calls `createRoom`.
 3. `rooms.ts` stores a new room in memory and returns a six-character code.
 4. The browser navigates to `/r/[code]`.
 5. `RoomClient` opens a WebSocket through `useGameSocket`.
@@ -28,7 +28,7 @@ The client stores `{ playerId, token, name, color }` in `localStorage` per room 
 1. Host sends `{ type: "startGame" }`.
 2. Server checks host authority and player count.
 3. Server creates a session with selected lobby toggles.
-4. Server calls `createRound` with seat order, starting seat, seed, and `instantNotMe`.
+4. Server calls `createRound` with seat order, starting seat, seed, `deckCount`, and `instantNotMe`.
 5. Server broadcasts lobby state.
 6. Server sends each player their own `viewFor(round, playerId)`.
 7. Server starts setup-peek timers.

@@ -16,6 +16,7 @@ import {
   applyRoundScores,
   createRound,
   createSession,
+  isValidDeckCount,
   eventVisibleTo,
   viewFor,
   type Command,
@@ -228,6 +229,16 @@ function handleSetToggle(room: Room, player: RoomPlayer, msg: Extract<ClientMess
       return;
     }
     room.toggles[msg.toggle] = msg.value;
+  } else if (msg.toggle === 'deckCount') {
+    if (room.status !== 'lobby') {
+      sendTo(player, { type: 'error', code: 'wrongStatus', message: 'deck count locks once the game starts' });
+      return;
+    }
+    if (!isValidDeckCount(msg.value)) {
+      sendTo(player, { type: 'error', code: 'badToggle', message: 'deck count must be an integer from 1 to 3' });
+      return;
+    }
+    room.toggles.deckCount = msg.value;
   } else if (msg.toggle === 'turnTimeoutSeconds') {
     if (typeof msg.value !== 'number' || !Number.isFinite(msg.value)) {
       sendTo(player, { type: 'error', code: 'badToggle', message: 'expected a number of seconds' });
@@ -292,6 +303,7 @@ function startRound(room: Room, roundNumber: number): void {
     // Round k starts at seat (k-1) mod nPlayers — the deal rotates.
     startingPlayer: startingSeatForRound(roundNumber, seatOrder.length),
     seed: newSeed(),
+    deckCount: room.toggles.deckCount,
     instantNotMe: room.toggles.instantNotMe,
   });
   room.status = 'playing';

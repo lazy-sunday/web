@@ -10,6 +10,7 @@ import { HTTP_URL } from '../lib/config';
 export default function LandingPage() {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
+  const [deckCount, setDeckCount] = useState(1);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -17,7 +18,11 @@ export default function LandingPage() {
     setCreating(true);
     setError(null);
     try {
-      const res = await fetch(`${HTTP_URL}/rooms`, { method: 'POST' });
+      const res = await fetch(`${HTTP_URL}/rooms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deckCount }),
+      });
       if (!res.ok) throw new Error(`server said ${res.status}`);
       const body = (await res.json()) as { code: string };
       router.push(`/r/${body.code}`);
@@ -52,6 +57,25 @@ export default function LandingPage() {
         <button type="button" className="btn btn-primary btn-block" onClick={createRoom} disabled={creating}>
           {creating ? 'Setting up the fridge…' : 'Create room'}
         </button>
+
+        <label className="create-setting">
+          <span>
+            <strong>Decks per room</strong>
+            <small>Choose the table size before you invite everyone in.</small>
+          </span>
+          <select
+            value={deckCount}
+            aria-label="Decks per room"
+            disabled={creating}
+            onChange={(e) => setDeckCount(Number(e.target.value))}
+          >
+            {[1, 2, 3].map((count) => (
+              <option key={count} value={count}>
+                {count} {count === 1 ? 'deck' : 'decks'}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <form className="join-row" onSubmit={joinWithCode}>
           <input

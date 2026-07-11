@@ -10,7 +10,7 @@ The server owns network identity, room lifecycle, host controls, timers, reconne
 
 Endpoints:
 
-- `POST /rooms`: creates an in-memory room and returns `{ "code": "ABC234" }`.
+- `POST /rooms`: creates an in-memory room and returns `{ "code": "ABC234" }`. An optional JSON body `{ "deckCount": 1 | 2 | 3 }` selects the room's deck count; omitted means 1.
 - `GET /health`: returns `{ "ok": true, "rooms": number }`.
 - WebSocket upgrade on the same HTTP server for all realtime messages.
 
@@ -76,6 +76,8 @@ If the host disconnects for more than five minutes, `maybeReassignHost` can move
 ## Starting and Advancing Rounds
 
 Only the host can start the game or deal the next round.
+
+The host can change `toggles.deckCount` while the room is in `lobby`. The value is broadcast in every `lobby` message, locks when the first round starts, and is passed to every subsequent `createRound` call in the match.
 
 Starting creates a session with the current seat order and lobby toggles. Each round:
 
