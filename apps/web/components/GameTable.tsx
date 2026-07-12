@@ -29,7 +29,9 @@ type Game = ReturnType<typeof useGameSocket>;
 
 export function GameTable({ game }: { game: Game }) {
   const { view, lobby, me, roundNumber, events } = game;
-  const peeks = usePeeks(events, me?.playerId ?? null, view?.phase ?? null);
+  // Peek display duration is decided by each peek event's own `reason`, not by
+  // the live view phase — see usePeeks and issue #28.
+  const peeks = usePeeks(events, me?.playerId ?? null);
   const sound = useSound();
   useGameSounds(events, me?.playerId ?? null, sound);
 
