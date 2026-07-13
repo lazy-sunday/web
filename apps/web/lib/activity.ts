@@ -16,6 +16,7 @@
 // the card sitting there is not, and is never included.
 
 import type { ActionName, EngineEvent, PlayerId } from '@lazy-sunday/engine';
+import { isTableActivitySpotlightEventType } from '@lazy-sunday/server/protocol';
 
 export type ActivitySlotRole = 'focus' | 'swap' | 'target';
 
@@ -45,6 +46,9 @@ export interface ActivityEntry {
   status: 'pending' | 'resolved';
   /** True for the eight playable actions (§5). */
   isAction: boolean;
+  /** Shared UI/server classification: this entry pauses the turn clock while
+   *  it occupies the center-table spotlight. */
+  spotlight: boolean;
   action?: ActionName;
   /** Optional privacy-safe visual treatment for affected public card slots. */
   visual?: ActivityVisual;
@@ -100,7 +104,7 @@ export function buildActivityLog(
     } else {
       // A client can connect after actionStarted but before the public outcome.
       // Keep the orphan outcome eligible for the center spotlight.
-      entries.push({ id: seq, seq, actor, action, text, status: 'resolved', isAction: true, visual });
+      entries.push({ id: seq, seq, actor, action, text, status: 'resolved', isAction: true, spotlight: true, visual });
     }
     active = null;
     activeKnockSlot = null;
@@ -120,6 +124,7 @@ export function buildActivityLog(
           actor: event.player,
           status: 'pending',
           isAction: true,
+          spotlight: true,
           action: event.action,
           text: `${nameOf(event.player)} is playing ${event.action}…`,
         };
@@ -154,6 +159,7 @@ export function buildActivityLog(
             action: 'Knock It Out',
             status: 'pending',
             isAction: true,
+            spotlight: true,
             text: `${nameOf(event.player)} is deciding on their card (${slotLabel(event.slot)})…`,
             visual: { kind: 'focus', slots: [{ player: event.player, slot: event.slot, role: 'focus' }] },
           };
@@ -252,7 +258,16 @@ export function buildActivityLog(
       default: {
         const line = describeStandalone(event, nameOf);
         if (line) {
-          entries.push({ id: seq, seq, actor: line.actor, text: line.text, status: 'resolved', isAction: false, visual: line.visual });
+          entries.push({
+            id: seq,
+            seq,
+            actor: line.actor,
+            text: line.text,
+            status: 'resolved',
+            isAction: false,
+            spotlight: isTableActivitySpotlightEventType(event.type),
+            visual: line.visual,
+          });
         }
       }
     }
@@ -264,7 +279,7 @@ export function buildActivityLog(
 /** The latest action or card placement worth showing at the center table. */
 export function latestSpotlightEntry(entries: readonly ActivityEntry[]): ActivityEntry | null {
   for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i]!.isAction || entries[i]!.visual) return entries[i]!;
+    if (entries[i]!.spotlight) return entries[i]!;
   }
   return null;
 }

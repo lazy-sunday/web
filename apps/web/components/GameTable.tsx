@@ -45,7 +45,7 @@ export function GameTable({ game }: { game: Game }) {
 
   // Event objects retain their identity while useGameSocket's capped array
   // slides forward. Assign each one a local monotonic id so unrelated events
-  // and array truncation never restart an old ten-second spotlight.
+  // and array truncation never restart an old seven-second spotlight.
   const activityEventIds = useRef(new WeakMap<object, number>());
   const nextActivityEventId = useRef(1);
   const activityEventIdOf = useCallback((event: Game['events'][number]) => {

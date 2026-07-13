@@ -638,7 +638,7 @@ select {
   line-height: 1.3;
   text-align: left;
   pointer-events: none;
-  animation: announce-life 10s ease-in-out forwards;
+  animation: announce-life var(--activity-spotlight-duration, 7s) ease-in-out forwards;
 }
 
 @keyframes announce-life {

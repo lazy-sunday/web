@@ -4,7 +4,7 @@
 //
 //  - ActionAnnouncement: a privacy-safe spotlight near the center table. On
 //    `actionStarted` it shows "X is playing Y…"; when the public outcome lands
-//    it updates the SAME line, stays visible for ten seconds, then fades. It is the only
+//    it updates the SAME line, stays visible for seven seconds, then fades. It is the only
 //    aria-live region here (polite + atomic) so screen readers hear a single,
 //    restrained start/outcome update — not every draw and discard.
 //
@@ -18,14 +18,15 @@
 // connection starts with an empty log while the authoritative table view is
 // restored as usual.
 
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import { TABLE_ACTIVITY_SPOTLIGHT_MS } from '@lazy-sunday/server/protocol';
 import { activityEntryKey, type ActivityEntry, type ActivityVisual } from '../lib/activity';
 
-export const ACTIVITY_SPOTLIGHT_MS = 10_000;
+export const ACTIVITY_SPOTLIGHT_MS = TABLE_ACTIVITY_SPOTLIGHT_MS;
 const LOG_VISIBLE_MAX = 40;
 
 /**
- * Keep the latest meaningful table event visible for exactly ten seconds.
+ * Keep the latest meaningful table event visible for exactly seven seconds.
  * The lifecycle key changes only for a genuinely new event or start→outcome
  * update, so unrelated socket traffic cannot revive an old announcement.
  */
@@ -61,6 +62,7 @@ export function ActionAnnouncement({ entry }: { entry: ActivityEntry | null }) {
       className="action-announce"
       data-status={entry.status}
       data-visual={entry.visual?.kind ?? 'text'}
+      style={{ '--activity-spotlight-duration': `${ACTIVITY_SPOTLIGHT_MS}ms` } as CSSProperties}
       role="status"
       aria-live="polite"
       aria-atomic="true"
