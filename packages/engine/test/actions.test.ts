@@ -215,12 +215,14 @@ describe("Landlord's Notice (§5, §9.4)", () => {
     expect(JSON.stringify(notice)).not.toContain(expected.name);
   });
 
-  it('may target the user themselves (§9.4)', () => {
+  it('rejects targeting the user themselves without mutating state (§9.4)', () => {
     const acting = drawAndPlayAction(aboutToDraw("Landlord's Notice"), 'a').state;
-    const r = ok(applyCommand(acting, {
+    const before = structuredClone(acting);
+    const r = err(applyCommand(acting, {
       type: 'actionInput', player: 'a', input: { action: "Landlord's Notice", targetId: 'a' },
     }));
-    expect(player(r.state, 'a').list).toHaveLength(4);
+    expect(r.code).toBe('invalidTarget');
+    expect(acting).toEqual(before);
   });
 
   it('reshuffles per §9.1 when the deck is empty', () => {

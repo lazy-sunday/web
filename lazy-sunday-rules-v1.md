@@ -98,7 +98,7 @@ turn. Performing the action is always optional.
 | **Switcheroo** | 10 | Blind-swap any TWO cards between TWO OTHER players. You are never involved, and nobody peeks. |
 | **Snoop** | 11 | Peek at any ONE opponent card. (Knowledge you can weaponize — see Section 6.) |
 | **"Not My Job"** | 12 | Move ONE card, unseen, from one opponent's list to another opponent's list. Their list sizes change. Never involves you. |
-| **Landlord's Notice** | 13 | Take the top deck card and place it face-down onto ANY player's list (including your own, if you dare). No one sees it. |
+| **Landlord's Notice** | 13 | Take the top deck card and place it face-down onto any ONE opponent's list. No one sees it. |
 | **"I'm Busy"** | 1 | Choose a player: their next turn is skipped. |
 
 ---
@@ -160,7 +160,7 @@ Lowest cumulative score across rounds wins the session.
 3. **"I'm Busy" vs. final turn:** if a skipped player's turn was their one final turn
    after a call, that turn is simply lost. Brutal. Intended.
 4. **Targeting:** "Not My Job" and Switcheroo must target two players other than the
-   user. Landlord's Notice may target anyone, including the user.
+   user. Landlord's Notice must target another player and may not target the user.
 5. **Knock It Out self-discard:** discarding via Knock It Out counts as a normal
    discard (it may set up quick-discard matches) but triggers no further action.
 6. **Simultaneous slap:** physically first card down wins; in the app, first tap
@@ -180,8 +180,3 @@ Lowest cumulative score across rounds wins the session.
 - **"NOT ME!"** — the round-ending call.
 - **Effort** — points; lowest wins.
 - **Nap** — the 0-effort card. The best thing on any Sunday list.
-
----
-
-*Version 1.1 — locked ruleset for the printable deck and the app. The Extended Edition
-(new chores, new actions, custom card counts) builds on top of this document.*

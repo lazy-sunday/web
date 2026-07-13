@@ -385,11 +385,13 @@ function handleActionInput(
     }
 
     case "Landlord's Notice": {
-      // §5: take the top deck card, place it face-down onto ANY player's list
-      // (including your own). No one sees it. §9.4 allows self-target.
+      // §5: take the top deck card and place it face-down onto any ONE opponent's
+      // list. No one sees it. §9.4 explicitly forbids self-targeting.
       const target = byId(input.targetId);
-      if (!target) return fail('invalidTarget', 'no such player');
-      if (target.id !== playerId && callerLocked(target.id)) {
+      if (!target || target.id === playerId) {
+        return fail('invalidTarget', "Landlord's Notice targets another player (§9.4)");
+      }
+      if (callerLocked(target.id)) {
         return fail('callerLocked', "the caller's list is locked (§7)");
       }
       if (!drawFromDeck(state, events)) {

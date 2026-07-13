@@ -1437,6 +1437,52 @@ select {
   background: rgba(255, 233, 184, 0.1);
 }
 
+.player-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.player-pick-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  border: 2px solid rgba(255, 233, 184, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-weight: 700;
+  transition: transform 150ms ease-out, border-color 150ms ease-out, background 150ms ease-out;
+}
+
+.action-modal:not(.night) .player-pick-btn {
+  border-color: rgba(71, 37, 15, 0.2);
+  background: #fff;
+}
+
+.player-pick-btn:not(:disabled):hover {
+  border-color: var(--night-moon);
+}
+
+.player-pick-btn:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.player-pick-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.player-pick-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .slot-picker-row {
   background: rgba(255, 255, 255, 0.06);
   border-radius: var(--radius);
