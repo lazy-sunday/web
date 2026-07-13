@@ -9,6 +9,7 @@
     "test": "npm run test -w @lazy-sunday/engine",
     "dev:server": "npm run dev -w @lazy-sunday/server",
     "dev:web": "npm run dev -w @lazy-sunday/web",
-    "playtest": "tsx apps/server/scripts/playtest-e2e.ts"
+    "playtest": "tsx apps/server/scripts/playtest-e2e.ts",
+    "playtest:activity-timer": "ACTIVITY_TIMER_ONLY=1 tsx apps/server/scripts/playtest-e2e.ts"
   }
 }

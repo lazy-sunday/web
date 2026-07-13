@@ -10,6 +10,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardName, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
+import { buildActivityLog, latestSpotlightEntry, type ActivityVisual } from '../lib/activity';
+import { ActionAnnouncement, ActivityLog, useActivitySpotlight } from './TableActivity';
 import { usePeeks } from '../lib/usePeeks';
 import { useCountdown } from '../lib/useCountdown';
 import { useSound } from '../lib/useSound';
@@ -41,8 +43,29 @@ export function GameTable({ game }: { game: Game }) {
     return (id: PlayerId) => map.get(id) ?? '#ccc';
   }, [lobby]);
 
-  // Latest "X did something" line for non-current players, built from public events.
-  const activityLine = useActivityLine(events, nameOf);
+  // Event objects retain their identity while useGameSocket's capped array
+  // slides forward. Assign each one a local monotonic id so unrelated events
+  // and array truncation never restart an old seven-second spotlight.
+  const activityEventIds = useRef(new WeakMap<object, number>());
+  const nextActivityEventId = useRef(1);
+  const activityEventIdOf = useCallback((event: Game['events'][number]) => {
+    const known = activityEventIds.current.get(event);
+    if (known !== undefined) return known;
+    const id = nextActivityEventId.current;
+    nextActivityEventId.current += 1;
+    activityEventIds.current.set(event, id);
+    return id;
+  }, []);
+
+  // Shared table activity (issue #30): one privacy-safe entry per public move,
+  // with actions grouped from "started" to their outcome. Drives the durable
+  // collapsible log, the center-table spotlight, and public slot highlights.
+  const activityEntries = useMemo(
+    () => buildActivityLog(events, nameOf, activityEventIdOf),
+    [events, nameOf, activityEventIdOf],
+  );
+  const latestActivity = useMemo(() => latestSpotlightEntry(activityEntries), [activityEntries]);
+  const spotlight = useActivitySpotlight(latestActivity);
 
   const [inFlight, setInFlight] = useState(false);
   useEffect(() => {
@@ -118,17 +141,17 @@ export function GameTable({ game }: { game: Game }) {
         view={view}
         roundNumber={roundNumber}
         nameOf={nameOf}
-        activityLine={activityLine}
         turnTimer={game.turnTimer}
         myId={myId}
       />
       <HouseRuleBadges toggles={lobby.toggles} />
       <PlayerPresenceBar lobby={lobby} meId={myId} />
+      <ActivityLog entries={activityEntries} />
 
       {view.phase === 'setupPeek' ? (
         <SetupPeekPanel game={game} peeks={peeks} inFlight={inFlight} sendGuarded={sendGuarded} />
       ) : (
-        <>
+        <div className="table-stage">
           <div className="opponent-rows">
             {opponents.map((p) => (
               <OpponentRow
@@ -143,10 +166,13 @@ export function GameTable({ game }: { game: Game }) {
                 peeks={peeks}
                 canSelectSlapTarget={canSelectOpponentSlapTarget}
                 selectedSlapTarget={selectedSlapTarget}
+                activityVisual={spotlight?.visual}
                 onSelectSlapTarget={onSelectSlapTarget}
               />
             ))}
           </div>
+
+          <ActionAnnouncement entry={spotlight} />
 
           <CenterPiles
             game={game}
@@ -172,6 +198,7 @@ export function GameTable({ game }: { game: Game }) {
             onPickSlot={onPickSlot}
             canSelectSlapTarget={canSelectSlapTarget}
             selectedSlapTarget={selectedSlapTarget}
+            activityVisual={spotlight?.visual}
             onSelectSlapTarget={onSelectSlapTarget}
           />
 
@@ -181,7 +208,7 @@ export function GameTable({ game }: { game: Game }) {
             selectedTarget={selectedSlapTarget}
             onClearTarget={clearSlapTarget}
           />
-        </>
+        </div>
       )}
 
       <ActionModal game={game} peeks={peeks} nameOf={nameOf} colorOf={colorOf} />
@@ -226,14 +253,12 @@ function TableBanner({
   view,
   roundNumber,
   nameOf,
-  activityLine,
   turnTimer,
   myId,
 }: {
   view: NonNullable<Game['view']>;
   roundNumber: number;
   nameOf: (id: PlayerId | null) => string;
-  activityLine: string | null;
   turnTimer: Game['turnTimer'];
   myId: PlayerId;
 }) {
@@ -249,7 +274,6 @@ function TableBanner({
       </span>
       <TurnCountdown turnTimer={turnTimer} myId={myId} />
       {view.caller && <span>&quot;NOT ME!&quot; called by {nameOf(view.caller)}</span>}
-      {activityLine && <span className="activity-line">{activityLine}</span>}
     </div>
   );
 }
@@ -388,6 +412,7 @@ function OpponentRow({
   peeks,
   canSelectSlapTarget,
   selectedSlapTarget,
+  activityVisual,
   onSelectSlapTarget,
 }: {
   playerId: PlayerId;
@@ -400,6 +425,7 @@ function OpponentRow({
   peeks: ReturnType<typeof usePeeks>;
   canSelectSlapTarget: boolean;
   selectedSlapTarget: SlapTarget | null;
+  activityVisual: ActivityVisual | undefined;
   onSelectSlapTarget: (owner: PlayerId, slot: number) => void;
 }) {
   return (
@@ -418,6 +444,7 @@ function OpponentRow({
           }
           const peeked = peeks.peekAt(playerId, slot.cardSlot);
           const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === slot.cardSlot;
+          const activityRole = activityRoleForSlot(activityVisual, playerId, slot.cardSlot);
           return (
             <button
               key={slot.visualSlot}
@@ -425,6 +452,7 @@ function OpponentRow({
               className="opp-slot"
               data-slap-pickable={canSelectSlapTarget}
               data-slap-selected={selected}
+              data-activity-role={activityRole}
               disabled={!canSelectSlapTarget}
               aria-label={
                 peeked
@@ -570,6 +598,7 @@ function MyRow({
   onPickSlot,
   canSelectSlapTarget,
   selectedSlapTarget,
+  activityVisual,
   onSelectSlapTarget,
 }: {
   game: Game;
@@ -583,6 +612,7 @@ function MyRow({
   onPickSlot: (slot: number) => void;
   canSelectSlapTarget: boolean;
   selectedSlapTarget: SlapTarget | null;
+  activityVisual: ActivityVisual | undefined;
   onSelectSlapTarget: (owner: PlayerId, slot: number) => void;
 }) {
   const { view, me, events } = game;
@@ -609,6 +639,7 @@ function MyRow({
           const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
           const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === slot.cardSlot;
           const slapPickable = !pickable && canSelectSlapTarget;
+          const activityRole = activityRoleForSlot(activityVisual, me.playerId, slot.cardSlot);
           return (
             <button
               key={slot.visualSlot}
@@ -618,6 +649,7 @@ function MyRow({
               data-slap-pickable={slapPickable}
               data-slap-selected={selected}
               data-just-placed={justPlacedSlot === slot.cardSlot}
+              data-activity-role={activityRole}
               disabled={pickable ? inFlight : !slapPickable}
               aria-pressed={slapPickable ? selected : undefined}
               aria-label={
@@ -727,6 +759,14 @@ function useJustChanged(value: string | null): boolean {
   return flag;
 }
 
+function activityRoleForSlot(
+  visual: ActivityVisual | undefined,
+  player: PlayerId,
+  slot: number,
+): ActivityVisual['slots'][number]['role'] | undefined {
+  return visual?.slots.find((candidate) => candidate.player === player && candidate.slot === slot)?.role;
+}
+
 /** The slot index I most recently placed a card into via keep/take-from-DONE,
  *  held for one brief animation window then cleared. Landlord's Notice can
  *  also place a card into my list unseen — we don't animate that one slot
@@ -752,74 +792,6 @@ function useJustPlacedSlot(events: Game['events'], myId: PlayerId | null): numbe
   return slot;
 }
 
-// ---------------------------------------------------------------------------
-// Activity line for onlookers, from public events. Best-effort last-5s log.
-
-function useActivityLine(events: Game['events'], nameOf: (id: PlayerId | null) => string): string | null {
-  const [line, setLine] = useState<string | null>(null);
-  useEffect(() => {
-    const last = events[events.length - 1];
-    if (!last) return;
-    const text = describeEvent(last, nameOf);
-    if (text) setLine(text);
-  }, [events, nameOf]);
-  return line;
-}
-
-// Every OTHER player sees "X is playing Snoop…" (name + action) — never a
-// target's face-down card face. Outcome lines below name positions/players
-// (all public per the engine's event shapes) but never a hidden identity;
-// the only card names that appear are ones the rules already make public
-// (DONE-pile discards, slap outcomes, Knock It Out self-discards).
-function describeEvent(event: Game['events'][number], nameOf: (id: PlayerId | null) => string): string | null {
-  switch (event.type) {
-    case 'drew':
-      return `${nameOf(event.player)} drew a card…`;
-    case 'kept':
-      return `${nameOf(event.player)} kept it.`;
-    case 'discarded':
-      return `${nameOf(event.player)} discarded to DONE.`;
-    case 'tookFromDone':
-      return `${nameOf(event.player)} took the DONE card.`;
-    case 'notMeCalled':
-      return `${nameOf(event.caller)} called "NOT ME!"`;
-    case 'slapCorrect':
-      return event.giftPending
-        ? `${nameOf(event.player)} slammed "Done it!" on ${nameOf(event.owner)}'s card.`
-        : `${nameOf(event.player)} slammed "Done it!"`;
-    case 'slapWrong':
-      return `${nameOf(event.player)} slapped wrong and drew a penalty.`;
-    case 'slapTooLate':
-      return `${nameOf(event.player)} was a split second too late.`;
-    case 'turnSkipped':
-      return `${nameOf(event.player)}'s turn was skipped ("I'm Busy").`;
-    case 'actionStarted':
-      return `${nameOf(event.player)} is playing ${event.action}…`;
-    case 'actionCancelled':
-      return `${nameOf(event.player)} decided not to play ${event.action}.`;
-    case 'checkedTheList':
-      return `${nameOf(event.player)} checked one of their own cards.`;
-    case 'knockItOutPeeked':
-      return `${nameOf(event.player)} is deciding whether to knock a card out…`;
-    case 'knockedOut':
-      return `${nameOf(event.player)} knocked out their "${event.card.name}".`;
-    case 'knockItOutKept':
-      return `${nameOf(event.player)} kept the card after peeking.`;
-    case 'traded':
-      return `${nameOf(event.player)} traded cards with ${nameOf(event.opponentId)}, blind.`;
-    case 'switcherood':
-      return `${nameOf(event.player)} switched a card between ${nameOf(event.a)} and ${nameOf(event.b)}.`;
-    case 'snooped':
-      return `${nameOf(event.player)} snooped on one of ${nameOf(event.targetId)}'s cards.`;
-    case 'notMyJobbed':
-      return `${nameOf(event.player)} moved a card from ${nameOf(event.fromId)} to ${nameOf(event.toId)} — "Not my job!"`;
-    case 'landlordsNoticed':
-      return `${nameOf(event.player)} served a Landlord's Notice on ${nameOf(event.targetId)}.`;
-    case 'imBusied':
-      return `${nameOf(event.player)} declared ${nameOf(event.targetId)} "I'm Busy" — their next turn is skipped.`;
-    case 'giftGiven':
-      return `${nameOf(event.from)} handed ${nameOf(event.to)} a card, face-down.`;
-    default:
-      return null;
-  }
-}
+// Activity feedback for the whole table (issue #30) — the center-table
+// announcement and the collapsible log — now lives in ./TableActivity.tsx,
+// sourced from the privacy-safe event describer in ../lib/activity.ts.

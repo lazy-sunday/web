@@ -487,6 +487,41 @@ async function main(): Promise<void> {
     await alice.waitFor((m) => m['type'] === 'view' && m['view'].phase === 'turn', 'turn phase');
   }
 
+  console.log('== table activity pauses the next turn timer ==');
+  {
+    const actor = ctx.clientById.get(alice.view!['currentPlayer'])!;
+    const drawn = actor.waitEvent('drawnCard');
+    const drawnClock = alice.waitFor(
+      (m) => m['type'] === 'turnTimer' && m['remainingMs'] === 10_000 && m['players'].includes(actor.playerId),
+      'draw decision timer',
+    );
+    actor.cmd({ type: 'draw' });
+    await Promise.all([drawn, drawnClock]);
+
+    const paused = alice.waitFor(
+      (m) => m['type'] === 'turnTimer' && m['remainingMs'] === null && m['players'].length > 0,
+      'activity timer pause',
+    );
+    const kept = alice.waitEvent('kept', (e) => e.player === actor.playerId);
+    actor.cmd({ type: 'keepDrawn', slot: 0 });
+    await Promise.all([paused, kept]);
+    const pausedAt = Date.now();
+    const resumed = alice.waitFor(
+      (m) => m['type'] === 'turnTimer' && m['remainingMs'] === 10_000 && m['players'].length > 0,
+      'full timer after activity pause',
+      9_000,
+    );
+    await resumed;
+    const pauseMs = Date.now() - pausedAt;
+    assert(pauseMs >= 6_500 && pauseMs <= 8_000, `turn timer stayed paused for about 7s (${pauseMs}ms)`);
+  }
+  if (process.env['ACTIVITY_TIMER_ONLY'] === '1') {
+    console.log(failures === 0 ? '\nACTIVITY TIMER CHECK PASSED' : `\n${failures} ACTIVITY TIMER CHECK(S) FAILED`);
+    for (const c of ctx.all) c.ws.terminate();
+    stopServer();
+    process.exit(failures === 0 ? 0 : 1);
+  }
+
   // -------------------------------------------------------------------------
   // §9.4 Targeting constraints — illegal targets rejected, legal ones applied
   // §9.5 Knock It Out self-discard

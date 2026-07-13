@@ -9,6 +9,38 @@
 import type { Command, EngineEvent, PlayerId, SessionEvent } from '@lazy-sunday/engine';
 import type { RoundView } from '@lazy-sunday/engine';
 
+/** Shared duration for the center-table activity spotlight. The authoritative
+ *  turn clock waits for this interval before it starts counting down. */
+export const TABLE_ACTIVITY_SPOTLIGHT_MS = 7_000;
+
+const TABLE_ACTIVITY_SPOTLIGHT_EVENT_TYPES: ReadonlySet<EngineEvent['type']> = new Set([
+  'kept',
+  'tookFromDone',
+  'actionStarted',
+  'actionCancelled',
+  'checkedTheList',
+  'knockItOutPeeked',
+  'knockedOut',
+  'knockItOutKept',
+  'traded',
+  'switcherood',
+  'snooped',
+  'notMyJobbed',
+  'landlordsNoticed',
+  'imBusied',
+  'giftGiven',
+]);
+
+/** True when the event batch drives the center-table spotlight. Keeping this
+ *  classification beside the shared duration prevents UI/server drift. */
+export function isTableActivitySpotlightEventType(type: EngineEvent['type']): boolean {
+  return TABLE_ACTIVITY_SPOTLIGHT_EVENT_TYPES.has(type);
+}
+
+export function hasTableActivitySpotlight(events: readonly EngineEvent[]): boolean {
+  return events.some((event) => isTableActivitySpotlightEventType(event.type));
+}
+
 // ---------------------------------------------------------------------------
 // Shared lobby/room shapes
 // ---------------------------------------------------------------------------
@@ -96,8 +128,8 @@ export type ServerMessage =
   | { type: 'view'; view: RoundView; roundNumber: number }
   /** How long the current turn/peek/action/gift has before it auto-skips.
    *  `remainingMs` is a duration (not an absolute time) so client clock skew is
-   *  irrelevant; null means nothing is currently timed. `players` are who the
-   *  clock is running against right now. */
+   *  irrelevant; null means the clock is paused or nothing is currently timed.
+   *  `players` are who the next/running clock belongs to. */
   | { type: 'turnTimer'; remainingMs: number | null; players: PlayerId[] }
   /** An engine event this player is allowed to see (eventVisibleTo-filtered). */
   | { type: 'event'; event: EngineEvent }

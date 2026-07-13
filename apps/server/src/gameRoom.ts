@@ -39,7 +39,13 @@ import {
   type Room,
   type RoomPlayer,
 } from './rooms.js';
-import { parseClientMessage, type ClientMessage, type ServerMessage } from './protocol.js';
+import {
+  TABLE_ACTIVITY_SPOTLIGHT_MS,
+  hasTableActivitySpotlight,
+  parseClientMessage,
+  type ClientMessage,
+  type ServerMessage,
+} from './protocol.js';
 
 // Slap rate limit: max 3 slap commands per 2 seconds per client.
 const SLAP_WINDOW_MS = 2_000;
@@ -348,23 +354,24 @@ function handleCommand(room: Room, player: RoomPlayer, clientCmd: Record<string,
     return;
   }
 
-  applyToRoom(room, cmd, player);
+  const applied = applyToRoom(room, cmd, player);
 
-  // Any command from a player the round is blocked on restarts their timer,
-  // even a rejected one — they are demonstrably at the keyboard.
-  if (room.round && blockingPlayers(room.round).includes(player.id)) {
+  // A rejected command from a player the round is blocked on restarts their
+  // timer — they are demonstrably at the keyboard. Successful commands already
+  // reset (or briefly pause) the timer inside applyToRoom.
+  if (!applied && room.round && blockingPlayers(room.round).includes(player.id)) {
     resetTimers(room);
   }
 }
 
 /** Apply an engine command; on success commit state, route events, broadcast views.
  *  Fully synchronous — never interleave async work in here. */
-function applyToRoom(room: Room, cmd: Command, feedbackTo: RoomPlayer | null): void {
-  if (!room.round) return;
+function applyToRoom(room: Room, cmd: Command, feedbackTo: RoomPlayer | null): boolean {
+  if (!room.round) return false;
   const result = applyCommand(room.round, cmd);
   if (!result.ok) {
     if (feedbackTo) sendTo(feedbackTo, { type: 'error', code: result.code, message: result.message });
-    return;
+    return false;
   }
   room.round = result.state;
 
@@ -388,7 +395,8 @@ function applyToRoom(room: Room, cmd: Command, feedbackTo: RoomPlayer | null): v
 
   broadcastViews(room);
   if (revealed) broadcastLobby(room); // standings changed
-  resetTimers(room);
+  resetTimers(room, hasTableActivitySpotlight(result.events) ? TABLE_ACTIVITY_SPOTLIGHT_MS : 0);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -408,16 +416,47 @@ export function blockingPlayers(state: RoundState): PlayerId[] {
   return []; // reveal
 }
 
-function resetTimers(room: Room): void {
+function clearTimers(room: Room): void {
   for (const t of room.timers.values()) clearTimeout(t);
   room.timers.clear();
+  if (room.timerStartDelay) clearTimeout(room.timerStartDelay);
+  room.timerStartDelay = null;
+  room.turnDeadline = null;
+}
+
+function resetTimers(room: Room, startDelayMs = 0): void {
+  clearTimers(room);
   if (room.status !== 'playing' || !room.round) {
-    room.turnDeadline = null;
     broadcast(room, { type: 'turnTimer', remainingMs: null, players: [] });
     return;
   }
-  const timeoutMs = room.toggles.turnTimeoutSeconds * 1000;
   const blocking = blockingPlayers(room.round);
+  if (blocking.length === 0) {
+    broadcast(room, { type: 'turnTimer', remainingMs: null, players: [] });
+    return;
+  }
+
+  if (startDelayMs > 0) {
+    const expectedRound = room.round;
+    broadcast(room, { type: 'turnTimer', remainingMs: null, players: blocking });
+    const delay = setTimeout(() => {
+      if (room.timerStartDelay !== delay) return;
+      room.timerStartDelay = null;
+      if (room.status !== 'playing' || room.round !== expectedRound) return;
+      const currentBlocking = blockingPlayers(room.round);
+      if (!samePlayers(currentBlocking, blocking)) return;
+      startTimers(room, currentBlocking);
+    }, startDelayMs);
+    delay.unref();
+    room.timerStartDelay = delay;
+    return;
+  }
+
+  startTimers(room, blocking);
+}
+
+function startTimers(room: Room, blocking: readonly PlayerId[]): void {
+  const timeoutMs = room.toggles.turnTimeoutSeconds * 1000;
   for (const pid of blocking) {
     const t = setTimeout(() => onTurnTimeout(room, pid), timeoutMs);
     t.unref();
@@ -429,8 +468,12 @@ function resetTimers(room: Room): void {
   broadcast(room, {
     type: 'turnTimer',
     remainingMs: room.turnDeadline === null ? null : timeoutMs,
-    players: blocking,
+    players: [...blocking],
   });
+}
+
+function samePlayers(a: readonly PlayerId[], b: readonly PlayerId[]): boolean {
+  return a.length === b.length && a.every((player, index) => player === b[index]);
 }
 
 function onTurnTimeout(room: Room, pid: PlayerId): void {
