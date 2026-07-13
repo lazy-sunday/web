@@ -17,11 +17,25 @@
 
 import type { ActionName, EngineEvent, PlayerId } from '@lazy-sunday/engine';
 
+export type ActivitySlotRole = 'focus' | 'swap' | 'target';
+
+export interface ActivitySlotVisual {
+  player: PlayerId;
+  slot: number;
+  role: ActivitySlotRole;
+}
+
+export interface ActivityVisual {
+  /** `swap` shows two exchanging cards; `move` shows a card travelling; `focus`
+   *  shows one affected card. The real table slots are highlighted as well. */
+  kind: 'focus' | 'move' | 'swap';
+  slots: ActivitySlotVisual[];
+}
+
 export interface ActivityEntry {
-  /** Stable id within one recompute: the event index where this entry began.
-   *  Lets React key rows and lets the announcement detect a genuinely new item. */
+  /** Stable id for the event where this entry began. */
   id: number;
-  /** Index of the most recent event folded into this entry. Advances when an
+  /** Id of the most recent event folded into this entry. Advances when an
    *  action's outcome updates its start line, so the announcement re-announces. */
   seq: number;
   actor: PlayerId | null;
@@ -29,13 +43,15 @@ export interface ActivityEntry {
   text: string;
   /** 'pending' = announced but not yet resolved (mid-action); 'resolved' = done. */
   status: 'pending' | 'resolved';
-  /** True for the eight playable actions (§5). Only these drive the center
-   *  announcement; slaps/draws/etc. live in the log but never take the spotlight. */
+  /** True for the eight playable actions (§5). */
   isAction: boolean;
   action?: ActionName;
+  /** Optional privacy-safe visual treatment for affected public card slots. */
+  visual?: ActivityVisual;
 }
 
 type NameOf = (id: PlayerId | null) => string;
+type EventIdOf = (event: EngineEvent, index: number) => number;
 
 /** 1-based, human-facing slot label from the engine's 0-based public position. */
 function slotLabel(slot: number): string {
@@ -55,7 +71,11 @@ function slotLabel(slot: number): string {
  * the server does not replay past events), the outcome is still shown as its
  * own resolved entry so the table stays consistent.
  */
-export function buildActivityLog(events: readonly EngineEvent[], nameOf: NameOf): ActivityEntry[] {
+export function buildActivityLog(
+  events: readonly EngineEvent[],
+  nameOf: NameOf,
+  eventIdOf: EventIdOf = (_event, index) => index,
+): ActivityEntry[] {
   const entries: ActivityEntry[] = [];
   // The action currently awaiting its outcome, if any.
   let active: ActivityEntry | null = null;
@@ -63,19 +83,31 @@ export function buildActivityLog(events: readonly EngineEvent[], nameOf: NameOf)
   // the "kept" line can still name the public slot position.
   let activeKnockSlot: number | null = null;
 
-  const resolveWith = (i: number, text: string): void => {
+  const resolveWith = (
+    seq: number,
+    actor: PlayerId,
+    action: ActionName,
+    text: string,
+    visual?: ActivityVisual,
+  ): void => {
     if (active) {
-      active.seq = i;
+      active.seq = seq;
+      active.actor = actor;
+      active.action = action;
       active.text = text;
       active.status = 'resolved';
+      active.visual = visual;
     } else {
-      entries.push({ id: i, seq: i, actor: null, text, status: 'resolved', isAction: false });
+      // A client can connect after actionStarted but before the public outcome.
+      // Keep the orphan outcome eligible for the center spotlight.
+      entries.push({ id: seq, seq, actor, action, text, status: 'resolved', isAction: true, visual });
     }
     active = null;
     activeKnockSlot = null;
   };
 
   events.forEach((event, i) => {
+    const seq = eventIdOf(event, i);
     switch (event.type) {
       case 'actionStarted': {
         // A new action supersedes any still-pending one. In normal play an
@@ -83,8 +115,8 @@ export function buildActivityLog(events: readonly EngineEvent[], nameOf: NameOf)
         // malformed/rapid stream so a stale "…" never lingers forever.
         if (active) active.status = 'resolved';
         const entry: ActivityEntry = {
-          id: i,
-          seq: i,
+          id: seq,
+          seq,
           actor: event.player,
           status: 'pending',
           isAction: true,
@@ -99,67 +131,128 @@ export function buildActivityLog(events: readonly EngineEvent[], nameOf: NameOf)
 
       // -- action outcomes (§5). Positions are public; identities never appear. --
       case 'checkedTheList':
-        resolveWith(i, `${nameOf(event.player)} checked their own card (${slotLabel(event.slot)}).`);
+        resolveWith(
+          seq,
+          event.player,
+          'Check the List',
+          `${nameOf(event.player)} checked their own card (${slotLabel(event.slot)}).`,
+          { kind: 'focus', slots: [{ player: event.player, slot: event.slot, role: 'focus' }] },
+        );
         return;
       case 'knockItOutPeeked': {
         // Peeked, decision still pending — keep the entry pending (unresolved).
         activeKnockSlot = event.slot;
         if (active) {
-          active.seq = i;
+          active.seq = seq;
           active.text = `${nameOf(event.player)} is deciding on their card (${slotLabel(event.slot)})…`;
+          active.visual = { kind: 'focus', slots: [{ player: event.player, slot: event.slot, role: 'focus' }] };
+        } else {
+          const entry: ActivityEntry = {
+            id: seq,
+            seq,
+            actor: event.player,
+            action: 'Knock It Out',
+            status: 'pending',
+            isAction: true,
+            text: `${nameOf(event.player)} is deciding on their card (${slotLabel(event.slot)})…`,
+            visual: { kind: 'focus', slots: [{ player: event.player, slot: event.slot, role: 'focus' }] },
+          };
+          entries.push(entry);
+          active = entry;
         }
         return;
       }
       case 'knockedOut':
         // §9.5: the self-discard is face-up on DONE, so its name is public.
-        resolveWith(i, `${nameOf(event.player)} knocked out their ${event.card.name}.`);
+        resolveWith(seq, event.player, 'Knock It Out', `${nameOf(event.player)} knocked out their ${event.card.name}.`);
         return;
       case 'knockItOutKept': {
         const where = activeKnockSlot !== null ? ` (${slotLabel(activeKnockSlot)})` : '';
-        resolveWith(i, `${nameOf(event.player)} peeked and kept their card${where}.`);
+        const visual = activeKnockSlot === null
+          ? undefined
+          : { kind: 'focus' as const, slots: [{ player: event.player, slot: activeKnockSlot, role: 'focus' as const }] };
+        resolveWith(seq, event.player, 'Knock It Out', `${nameOf(event.player)} peeked and kept their card${where}.`, visual);
         return;
       }
       case 'traded':
         // Blind swap: positions only, no cards named (§5 "No peeking").
         resolveWith(
-          i,
+          seq,
+          event.player,
+          "Let's Trade",
           `${nameOf(event.player)} blind-swapped their card (${slotLabel(event.mySlot)}) with ${nameOf(event.opponentId)}'s (${slotLabel(event.opponentSlot)}).`,
+          {
+            kind: 'swap',
+            slots: [
+              { player: event.player, slot: event.mySlot, role: 'swap' },
+              { player: event.opponentId, slot: event.opponentSlot, role: 'swap' },
+            ],
+          },
         );
         return;
       case 'switcherood':
         resolveWith(
-          i,
+          seq,
+          event.player,
+          'Switcheroo',
           `${nameOf(event.player)} switched ${nameOf(event.a)}'s card (${slotLabel(event.aSlot)}) with ${nameOf(event.b)}'s (${slotLabel(event.bSlot)}).`,
+          {
+            kind: 'swap',
+            slots: [
+              { player: event.a, slot: event.aSlot, role: 'swap' },
+              { player: event.b, slot: event.bSlot, role: 'swap' },
+            ],
+          },
         );
         return;
       case 'snooped':
         // Actor + target + public slot are visible; the face went only to the
         // actor via a private `peek` event (never through this log).
-        resolveWith(i, `${nameOf(event.player)} snooped ${nameOf(event.targetId)}'s card (${slotLabel(event.slot)}).`);
+        resolveWith(
+          seq,
+          event.player,
+          'Snoop',
+          `${nameOf(event.player)} snooped ${nameOf(event.targetId)}'s card (${slotLabel(event.slot)}).`,
+          { kind: 'focus', slots: [{ player: event.targetId, slot: event.slot, role: 'focus' }] },
+        );
         return;
       case 'notMyJobbed':
         resolveWith(
-          i,
+          seq,
+          event.player,
+          'Not My Job',
           `${nameOf(event.player)} moved a card from ${nameOf(event.fromId)} (${slotLabel(event.fromSlot)}) to ${nameOf(event.toId)} (${slotLabel(event.toSlot)}).`,
+          {
+            kind: 'move',
+            // The source compact index changes after removal, so only the
+            // destination can be highlighted accurately in the resulting view.
+            slots: [{ player: event.toId, slot: event.toSlot, role: 'target' }],
+          },
         );
         return;
       case 'landlordsNoticed':
         // §5 "No one sees it": we name the recipient + public slot, never the card.
-        resolveWith(i, `${nameOf(event.player)} slid a face-down card onto ${nameOf(event.targetId)}'s list (${slotLabel(event.slot)}).`);
+        resolveWith(
+          seq,
+          event.player,
+          "Landlord's Notice",
+          `${nameOf(event.player)} slid a face-down card onto ${nameOf(event.targetId)}'s list (${slotLabel(event.slot)}).`,
+          { kind: 'move', slots: [{ player: event.targetId, slot: event.slot, role: 'target' }] },
+        );
         return;
       case 'imBusied':
-        resolveWith(i, `${nameOf(event.player)} played "I'm Busy" — ${nameOf(event.targetId)}'s next turn is skipped.`);
+        resolveWith(seq, event.player, "I'm Busy", `${nameOf(event.player)} played "I'm Busy" — ${nameOf(event.targetId)}'s next turn is skipped.`);
         return;
       case 'actionCancelled':
         // Also the server-timeout path for an unresolved action (round.ts).
-        resolveWith(i, `${nameOf(event.player)} didn't play ${event.action}.`);
+        resolveWith(seq, event.player, event.action, `${nameOf(event.player)} didn't play ${event.action}.`);
         return;
 
       // -- everything else: standalone log lines (no spotlight) --
       default: {
         const line = describeStandalone(event, nameOf);
         if (line) {
-          entries.push({ id: i, seq: i, actor: line.actor, text: line.text, status: 'resolved', isAction: false });
+          entries.push({ id: seq, seq, actor: line.actor, text: line.text, status: 'resolved', isAction: false, visual: line.visual });
         }
       }
     }
@@ -168,12 +261,17 @@ export function buildActivityLog(events: readonly EngineEvent[], nameOf: NameOf)
   return entries;
 }
 
-/** The latest action entry — the one the center announcement spotlights. */
-export function latestActionEntry(entries: readonly ActivityEntry[]): ActivityEntry | null {
+/** The latest action or card placement worth showing at the center table. */
+export function latestSpotlightEntry(entries: readonly ActivityEntry[]): ActivityEntry | null {
   for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i]!.isAction) return entries[i]!;
+    if (entries[i]!.isAction || entries[i]!.visual) return entries[i]!;
   }
   return null;
+}
+
+/** Stable lifecycle key: unrelated events must not restart the spotlight. */
+export function activityEntryKey(entry: ActivityEntry | null): string | null {
+  return entry ? `${entry.id}:${entry.seq}` : null;
 }
 
 /** Non-action public events that still belong in the log. Card names appear
@@ -183,18 +281,26 @@ export function latestActionEntry(entries: readonly ActivityEntry[]): ActivityEn
 function describeStandalone(
   event: EngineEvent,
   nameOf: NameOf,
-): { actor: PlayerId | null; text: string } | null {
+): { actor: PlayerId | null; text: string; visual?: ActivityVisual } | null {
   switch (event.type) {
     case 'drew':
       return { actor: event.player, text: `${nameOf(event.player)} drew a card.` };
     case 'kept':
-      return { actor: event.player, text: `${nameOf(event.player)} kept the drawn card.` };
+      return {
+        actor: event.player,
+        text: `${nameOf(event.player)} kept the drawn card (${slotLabel(event.slot)}).`,
+        visual: { kind: 'focus', slots: [{ player: event.player, slot: event.slot, role: 'target' }] },
+      };
     case 'discarded':
       // The discarded card is face-up on DONE — its name is public (§4A).
       return { actor: event.player, text: `${nameOf(event.player)} discarded ${event.card.name} to DONE.` };
     case 'tookFromDone':
       // The taken card was the public DONE top; its name is already known (§4B).
-      return { actor: event.player, text: `${nameOf(event.player)} took ${event.taken.name} from DONE.` };
+      return {
+        actor: event.player,
+        text: `${nameOf(event.player)} took ${event.taken.name} from DONE (${slotLabel(event.slot)}).`,
+        visual: { kind: 'move', slots: [{ player: event.player, slot: event.slot, role: 'target' }] },
+      };
     case 'notMeCalled':
       return { actor: event.caller, text: `${nameOf(event.caller)} called "NOT ME!"` };
     case 'slapCorrect':
@@ -216,7 +322,11 @@ function describeStandalone(
       return { actor: event.player, text: `${nameOf(event.player)} was a split second too late.` };
     case 'giftGiven':
       // §9.7: the gift is face-down; only the fact + recipient are public.
-      return { actor: event.from, text: `${nameOf(event.from)} handed ${nameOf(event.to)} a card, face-down.` };
+      return {
+        actor: event.from,
+        text: `${nameOf(event.from)} handed ${nameOf(event.to)} a card, face-down (${slotLabel(event.toSlot)}).`,
+        visual: { kind: 'move', slots: [{ player: event.to, slot: event.toSlot, role: 'target' }] },
+      };
     case 'turnSkipped':
       return { actor: event.player, text: `${nameOf(event.player)}'s turn was skipped.` };
     case 'deckReshuffled':

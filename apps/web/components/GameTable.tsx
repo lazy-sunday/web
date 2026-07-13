@@ -10,8 +10,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardName, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
-import { buildActivityLog, latestActionEntry } from '../lib/activity';
-import { ActionAnnouncement, ActivityLog } from './TableActivity';
+import { buildActivityLog, latestSpotlightEntry, type ActivityVisual } from '../lib/activity';
+import { ActionAnnouncement, ActivityLog, useActivitySpotlight } from './TableActivity';
 import { usePeeks } from '../lib/usePeeks';
 import { useCountdown } from '../lib/useCountdown';
 import { useSound } from '../lib/useSound';
@@ -43,11 +43,29 @@ export function GameTable({ game }: { game: Game }) {
     return (id: PlayerId) => map.get(id) ?? '#ccc';
   }, [lobby]);
 
+  // Event objects retain their identity while useGameSocket's capped array
+  // slides forward. Assign each one a local monotonic id so unrelated events
+  // and array truncation never restart an old ten-second spotlight.
+  const activityEventIds = useRef(new WeakMap<object, number>());
+  const nextActivityEventId = useRef(1);
+  const activityEventIdOf = useCallback((event: Game['events'][number]) => {
+    const known = activityEventIds.current.get(event);
+    if (known !== undefined) return known;
+    const id = nextActivityEventId.current;
+    nextActivityEventId.current += 1;
+    activityEventIds.current.set(event, id);
+    return id;
+  }, []);
+
   // Shared table activity (issue #30): one privacy-safe entry per public move,
   // with actions grouped from "started" to their outcome. Drives the durable
-  // collapsible log and the ephemeral center-table announcement.
-  const activityEntries = useMemo(() => buildActivityLog(events, nameOf), [events, nameOf]);
-  const latestAction = useMemo(() => latestActionEntry(activityEntries), [activityEntries]);
+  // collapsible log, the center-table spotlight, and public slot highlights.
+  const activityEntries = useMemo(
+    () => buildActivityLog(events, nameOf, activityEventIdOf),
+    [events, nameOf, activityEventIdOf],
+  );
+  const latestActivity = useMemo(() => latestSpotlightEntry(activityEntries), [activityEntries]);
+  const spotlight = useActivitySpotlight(latestActivity);
 
   const [inFlight, setInFlight] = useState(false);
   useEffect(() => {
@@ -133,7 +151,7 @@ export function GameTable({ game }: { game: Game }) {
       {view.phase === 'setupPeek' ? (
         <SetupPeekPanel game={game} peeks={peeks} inFlight={inFlight} sendGuarded={sendGuarded} />
       ) : (
-        <>
+        <div className="table-stage">
           <div className="opponent-rows">
             {opponents.map((p) => (
               <OpponentRow
@@ -148,12 +166,13 @@ export function GameTable({ game }: { game: Game }) {
                 peeks={peeks}
                 canSelectSlapTarget={canSelectOpponentSlapTarget}
                 selectedSlapTarget={selectedSlapTarget}
+                activityVisual={spotlight?.visual}
                 onSelectSlapTarget={onSelectSlapTarget}
               />
             ))}
           </div>
 
-          <ActionAnnouncement entry={latestAction} />
+          <ActionAnnouncement entry={spotlight} />
 
           <CenterPiles
             game={game}
@@ -179,6 +198,7 @@ export function GameTable({ game }: { game: Game }) {
             onPickSlot={onPickSlot}
             canSelectSlapTarget={canSelectSlapTarget}
             selectedSlapTarget={selectedSlapTarget}
+            activityVisual={spotlight?.visual}
             onSelectSlapTarget={onSelectSlapTarget}
           />
 
@@ -188,7 +208,7 @@ export function GameTable({ game }: { game: Game }) {
             selectedTarget={selectedSlapTarget}
             onClearTarget={clearSlapTarget}
           />
-        </>
+        </div>
       )}
 
       <ActionModal game={game} peeks={peeks} nameOf={nameOf} colorOf={colorOf} />
@@ -392,6 +412,7 @@ function OpponentRow({
   peeks,
   canSelectSlapTarget,
   selectedSlapTarget,
+  activityVisual,
   onSelectSlapTarget,
 }: {
   playerId: PlayerId;
@@ -404,6 +425,7 @@ function OpponentRow({
   peeks: ReturnType<typeof usePeeks>;
   canSelectSlapTarget: boolean;
   selectedSlapTarget: SlapTarget | null;
+  activityVisual: ActivityVisual | undefined;
   onSelectSlapTarget: (owner: PlayerId, slot: number) => void;
 }) {
   return (
@@ -422,6 +444,7 @@ function OpponentRow({
           }
           const peeked = peeks.peekAt(playerId, slot.cardSlot);
           const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === slot.cardSlot;
+          const activityRole = activityRoleForSlot(activityVisual, playerId, slot.cardSlot);
           return (
             <button
               key={slot.visualSlot}
@@ -429,6 +452,7 @@ function OpponentRow({
               className="opp-slot"
               data-slap-pickable={canSelectSlapTarget}
               data-slap-selected={selected}
+              data-activity-role={activityRole}
               disabled={!canSelectSlapTarget}
               aria-label={
                 peeked
@@ -574,6 +598,7 @@ function MyRow({
   onPickSlot,
   canSelectSlapTarget,
   selectedSlapTarget,
+  activityVisual,
   onSelectSlapTarget,
 }: {
   game: Game;
@@ -587,6 +612,7 @@ function MyRow({
   onPickSlot: (slot: number) => void;
   canSelectSlapTarget: boolean;
   selectedSlapTarget: SlapTarget | null;
+  activityVisual: ActivityVisual | undefined;
   onSelectSlapTarget: (owner: PlayerId, slot: number) => void;
 }) {
   const { view, me, events } = game;
@@ -613,6 +639,7 @@ function MyRow({
           const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
           const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === slot.cardSlot;
           const slapPickable = !pickable && canSelectSlapTarget;
+          const activityRole = activityRoleForSlot(activityVisual, me.playerId, slot.cardSlot);
           return (
             <button
               key={slot.visualSlot}
@@ -622,6 +649,7 @@ function MyRow({
               data-slap-pickable={slapPickable}
               data-slap-selected={selected}
               data-just-placed={justPlacedSlot === slot.cardSlot}
+              data-activity-role={activityRole}
               disabled={pickable ? inFlight : !slapPickable}
               aria-pressed={slapPickable ? selected : undefined}
               aria-label={
@@ -729,6 +757,14 @@ function useJustChanged(value: string | null): boolean {
     return undefined;
   }, [value]);
   return flag;
+}
+
+function activityRoleForSlot(
+  visual: ActivityVisual | undefined,
+  player: PlayerId,
+  slot: number,
+): ActivityVisual['slots'][number]['role'] | undefined {
+  return visual?.slots.find((candidate) => candidate.player === player && candidate.slot === slot)?.role;
 }
 
 /** The slot index I most recently placed a card into via keep/take-from-DONE,

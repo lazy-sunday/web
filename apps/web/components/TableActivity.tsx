@@ -4,7 +4,7 @@
 //
 //  - ActionAnnouncement: a privacy-safe spotlight near the center table. On
 //    `actionStarted` it shows "X is playing Y…"; when the public outcome lands
-//    it updates the SAME line, then lingers briefly and fades. It is the only
+//    it updates the SAME line, stays visible for ten seconds, then fades. It is the only
 //    aria-live region here (polite + atomic) so screen readers hear a single,
 //    restrained start/outcome update — not every draw and discard.
 //
@@ -19,53 +19,85 @@
 // restored as usual.
 
 import { useEffect, useRef, useState } from 'react';
-import type { ActivityEntry } from '../lib/activity';
+import { activityEntryKey, type ActivityEntry, type ActivityVisual } from '../lib/activity';
 
-const ANNOUNCE_LINGER_MS = 4500;
+export const ACTIVITY_SPOTLIGHT_MS = 10_000;
 const LOG_VISIBLE_MAX = 40;
 
-/** Center-table spotlight for the latest action, start → outcome. */
-export function ActionAnnouncement({ entry }: { entry: ActivityEntry | null }) {
+/**
+ * Keep the latest meaningful table event visible for exactly ten seconds.
+ * The lifecycle key changes only for a genuinely new event or start→outcome
+ * update, so unrelated socket traffic cannot revive an old announcement.
+ */
+export function useActivitySpotlight(entry: ActivityEntry | null): ActivityEntry | null {
   const [shown, setShown] = useState<ActivityEntry | null>(null);
-  const [visible, setVisible] = useState(false);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const entryId = entry?.id ?? null;
-  const entrySeq = entry?.seq ?? null;
-  const entryStatus = entry?.status ?? null;
+  const latest = useRef(entry);
+  latest.current = entry;
+  const lifecycleKey = activityEntryKey(entry);
 
   useEffect(() => {
-    if (!entry) return;
-    setShown(entry);
-    setVisible(true);
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    // A resolved outcome lingers, then fades. A pending action stays up (no
-    // timer) until its outcome arrives and re-runs this effect. A brand-new
-    // action (new id) cancels any prior linger — newest action wins, so rapid
-    // successive plays never queue up or leave a stale spotlight.
-    if (entry.status === 'resolved') {
-      hideTimer.current = setTimeout(() => setVisible(false), ANNOUNCE_LINGER_MS);
+    const next = latest.current;
+    if (!next || lifecycleKey === null) {
+      setShown(null);
+      return undefined;
     }
-    return () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current);
-    };
-    // Depends on identity (id), progress (seq) and resolution (status) so both
-    // a new action and an in-place start→outcome update re-trigger.
-  }, [entry, entryId, entrySeq, entryStatus]);
+    setShown(next);
+    const timer = setTimeout(() => setShown(null), ACTIVITY_SPOTLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [lifecycleKey]);
 
-  if (!shown || !visible) return null;
+  return shown;
+}
+
+/** Center-table spotlight for the latest action or public card placement. */
+export function ActionAnnouncement({ entry }: { entry: ActivityEntry | null }) {
+  if (!entry) return null;
+
+  const lifecycleKey = activityEntryKey(entry) ?? 'activity';
 
   return (
     <div
+      key={lifecycleKey}
       className="action-announce"
-      data-status={shown.status}
+      data-status={entry.status}
+      data-visual={entry.visual?.kind ?? 'text'}
       role="status"
       aria-live="polite"
       aria-atomic="true"
     >
       <span className="action-announce-dot" aria-hidden />
-      <span className="action-announce-text">{shown.text}</span>
+      <ActivityMotion visual={entry.visual} />
+      <span className="action-announce-text">{entry.text}</span>
     </div>
+  );
+}
+
+/** Small symbolic cue; the matching real slots receive a visible ring too. */
+function ActivityMotion({ visual }: { visual: ActivityVisual | undefined }) {
+  if (!visual) return null;
+  if (visual.kind === 'focus') {
+    return (
+      <span className="activity-motion" data-kind="focus" aria-hidden>
+        <span className="activity-mini-card" data-target="true" />
+      </span>
+    );
+  }
+  const twoCards = visual.kind === 'swap';
+  return (
+    <span className="activity-motion" data-kind={visual.kind} aria-hidden>
+      <span className="activity-mini-card" />
+      <svg className="activity-motion-arrow" viewBox="0 0 28 18" focusable="false">
+        {twoCards ? (
+          <>
+            <path d="M3 6h18m0 0-4-4m4 4-4 4" />
+            <path d="M25 12H7m0 0 4-4m-4 4 4 4" />
+          </>
+        ) : (
+          <path d="M3 9h20m0 0-5-5m5 5-5 5" />
+        )}
+      </svg>
+      <span className="activity-mini-card" data-target="true" />
+    </span>
   );
 }
 
