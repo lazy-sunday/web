@@ -8,21 +8,21 @@
 // discrete event to key off of.
 
 import { useEffect, useRef } from 'react';
-import type { EngineEvent, PlayerId } from '@lazy-sunday/engine';
+import type { PlayerId } from '@lazy-sunday/engine';
+import { eventsAfter } from './eventLog';
+import type { GameEvent } from './useGameSocket';
 import type { SoundControls } from './useSound';
 
-export function useGameSounds(events: EngineEvent[], myId: PlayerId | null, sound: SoundControls): void {
-  const seenCount = useRef(0);
+export function useGameSounds(events: GameEvent[], myId: PlayerId | null, sound: SoundControls): void {
+  const lastSeenSequence = useRef(0);
 
   useEffect(() => {
-    // A fresh room/round can shrink the events array (capped log) — guard
-    // against a negative slice by resetting when that happens.
-    if (seenCount.current > events.length) seenCount.current = 0;
-    const newEvents = events.slice(seenCount.current);
-    seenCount.current = events.length;
-    if (newEvents.length === 0 || !myId) return;
+    const newEvents = eventsAfter(events, lastSeenSequence.current);
+    if (newEvents.length === 0) return;
+    lastSeenSequence.current = newEvents.at(-1)!.sequence;
+    if (!myId) return;
 
-    for (const ev of newEvents) {
+    for (const { event: ev } of newEvents) {
       switch (ev.type) {
         case 'drew':
           if (ev.player === myId) sound.play('draw');

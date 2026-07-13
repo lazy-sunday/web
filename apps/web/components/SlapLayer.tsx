@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CardName, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
+import { eventsAfter } from '../lib/eventLog';
 import { renderSlotsFor } from '../lib/slots';
 import { CardBack, CardFace } from './Card';
 
@@ -52,7 +53,7 @@ export function SlapLayer({
   const { view, me, events, lastError, clearError } = game;
   const [optimistic, setOptimistic] = useState<OptimisticSlap | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const seenCount = useRef(0);
+  const lastSeenSequence = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const slapSending = useRef(false);
@@ -86,10 +87,11 @@ export function SlapLayer({
 
   // Reconcile optimistic state against the real event stream.
   useEffect(() => {
-    const newEvents = events.slice(seenCount.current);
-    seenCount.current = events.length;
-    if (newEvents.length === 0 || !myId) return;
-    for (const ev of newEvents) {
+    const newEvents = eventsAfter(events, lastSeenSequence.current);
+    if (newEvents.length === 0) return;
+    lastSeenSequence.current = newEvents.at(-1)!.sequence;
+    if (!myId) return;
+    for (const { event: ev } of newEvents) {
       if (ev.type === 'slapCorrect' && ev.player === myId) {
         onClearTarget();
         setOptimistic({ owner: ev.owner, slot: ev.slot, outcome: 'correct' });

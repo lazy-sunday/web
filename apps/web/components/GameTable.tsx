@@ -8,10 +8,11 @@
 // top (always public) and whatever `usePeeks`/`myDrawnCard` grants me.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CardName, PlayerId } from '@lazy-sunday/engine';
+import type { CardName, EngineEvent, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
 import { buildActivityLog, latestSpotlightEntry, type ActivityVisual } from '../lib/activity';
 import { ActionAnnouncement, ActivityLog, useActivitySpotlight } from './TableActivity';
+import { eventsAfter } from '../lib/eventLog';
 import { usePeeks } from '../lib/usePeeks';
 import { useCountdown } from '../lib/useCountdown';
 import { useSound } from '../lib/useSound';
@@ -45,26 +46,26 @@ export function GameTable({ game }: { game: Game }) {
     return (id: PlayerId) => map.get(id) ?? '#ccc';
   }, [lobby]);
 
-  // Event objects retain their identity while useGameSocket's capped array
-  // slides forward. Assign each one a local monotonic id so unrelated events
-  // and array truncation never restart an old seven-second spotlight.
-  const activityEventIds = useRef(new WeakMap<object, number>());
-  const nextActivityEventId = useRef(1);
-  const activityEventIdOf = useCallback((event: Game['events'][number]) => {
-    const known = activityEventIds.current.get(event);
-    if (known !== undefined) return known;
-    const id = nextActivityEventId.current;
-    nextActivityEventId.current += 1;
-    activityEventIds.current.set(event, id);
-    return id;
-  }, []);
+  // The socket event log already assigns a stable local sequence before its
+  // capped array slides forward. Reuse that identity for activity folding and
+  // spotlights, while passing the presentation model the raw engine events it
+  // intentionally describes.
+  const activityEvents = useMemo(() => events.map(({ event }) => event), [events]);
+  const activityEventIds = useMemo(
+    () => new Map(events.map(({ sequence, event }) => [event, sequence] as const)),
+    [events],
+  );
+  const activityEventIdOf = useCallback(
+    (event: EngineEvent) => activityEventIds.get(event) ?? 0,
+    [activityEventIds],
+  );
 
   // Shared table activity (issue #30): one privacy-safe entry per public move,
   // with actions grouped from "started" to their outcome. Drives the durable
   // collapsible log, the center-table spotlight, and public slot highlights.
   const activityEntries = useMemo(
-    () => buildActivityLog(events, nameOf, activityEventIdOf),
-    [events, nameOf, activityEventIdOf],
+    () => buildActivityLog(activityEvents, nameOf, activityEventIdOf),
+    [activityEvents, nameOf, activityEventIdOf],
   );
   const latestActivity = useMemo(() => latestSpotlightEntry(activityEntries), [activityEntries]);
   const spotlight = useActivitySpotlight(latestActivity);
@@ -776,13 +777,13 @@ function activityRoleForSlot(
  *  itself is still visible via the row re-rendering. */
 function useJustPlacedSlot(events: Game['events'], myId: PlayerId | null): number | null {
   const [slot, setSlot] = useState<number | null>(null);
-  const seenCount = useRef(0);
+  const lastSeenSequence = useRef(0);
   useEffect(() => {
-    if (seenCount.current > events.length) seenCount.current = 0;
-    const newEvents = events.slice(seenCount.current);
-    seenCount.current = events.length;
-    if (newEvents.length === 0 || !myId) return;
-    for (const ev of newEvents) {
+    const newEvents = eventsAfter(events, lastSeenSequence.current);
+    if (newEvents.length === 0) return;
+    lastSeenSequence.current = newEvents.at(-1)!.sequence;
+    if (!myId) return;
+    for (const { event: ev } of newEvents) {
       if ((ev.type === 'kept' || ev.type === 'tookFromDone') && ev.player === myId) {
         setSlot(ev.slot);
         const t = setTimeout(() => setSlot(null), 240);

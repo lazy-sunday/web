@@ -8,6 +8,7 @@ import {
   reducePeek,
   type ActivePeek,
 } from './usePeeks';
+import { appendEvent, eventsAfter, type SequencedEvent } from './eventLog';
 
 type PeekEvent = Extract<EngineEvent, { type: 'peek' }>;
 
@@ -60,27 +61,46 @@ describe('reducePeek — issue #28 setup-peek race', () => {
     assert.equal(peeks.get('p_last:4')?.expiresAt, now + SETUP_PEEK_MS);
   });
 
-  it('re-processing the same setup peek keeps it at 10s (a re-render never shortens it)', () => {
-    const first = reducePeek(
-      empty,
-      {
-        type: 'peek',
-        to: 'p',
-        reason: 'setup',
-        reveals: [{ owner: 'p', slot: 1, card: card('c', 'Feed the Cat', 2, 'chore') }],
-      },
-      500,
-    );
-    // A later re-application (e.g. an accidental duplicate render) still uses the
-    // setup TTL — the duration is a property of the peek, not of when it is seen.
-    const again = reducePeek(first, {
+  it('processes a setup peek exactly once across re-renders', () => {
+    const event: PeekEvent = {
       type: 'peek',
       to: 'p',
       reason: 'setup',
       reveals: [{ owner: 'p', slot: 1, card: card('c', 'Feed the Cat', 2, 'chore') }],
-    }, 800);
-    assert.equal(again.get('p:1')?.expiresAt, 800 + SETUP_PEEK_MS);
-    assert.equal(again.size, 1);
+    };
+    const log: SequencedEvent<PeekEvent>[] = [{ sequence: 7, event }];
+
+    const firstBatch = eventsAfter(log, 0);
+    const first = reducePeek(empty, firstBatch[0]!.event, 500);
+    const cursor = firstBatch.at(-1)!.sequence;
+
+    const rerenderBatch = eventsAfter(log, cursor);
+    assert.equal(rerenderBatch.length, 0);
+    assert.equal(first.get('p:1')?.expiresAt, 500 + SETUP_PEEK_MS);
+    assert.equal(first.size, 1);
+  });
+
+  it('processes a setup peek that arrives after the 200-event window rolls over', () => {
+    let log: SequencedEvent<EngineEvent>[] = [];
+    for (let sequence = 1; sequence <= 200; sequence += 1) {
+      log = appendEvent(log, { type: 'setupPeeked', player: 'someone' }, sequence, 200);
+    }
+    const cursor = log.at(-1)!.sequence;
+    const peek: PeekEvent = {
+      type: 'peek',
+      to: 'p',
+      reason: 'setup',
+      reveals: [{ owner: 'p', slot: 2, card: card('late', 'Water the Plants', 3, 'chore') }],
+    };
+    log = appendEvent(log, peek, 201, 200);
+
+    const newEvents = eventsAfter(log, cursor);
+    assert.equal(newEvents.length, 1);
+    const rolloverEvent = newEvents[0]!.event;
+    assert.equal(rolloverEvent.type, 'peek');
+    if (rolloverEvent.type !== 'peek') throw new Error('expected a private peek');
+    const active = reducePeek(empty, rolloverEvent, 2_000);
+    assert.equal(active.get('p:2')?.expiresAt, 2_000 + SETUP_PEEK_MS);
   });
 
   it('a §5 granted peek gets the 4s reveal', () => {

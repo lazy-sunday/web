@@ -53,7 +53,7 @@ describe('table activity spotlight', () => {
   it('does not expose private peek or drawn-card identities in activity text', () => {
     const secret = { id: 'secret-card', name: 'Vacuum the Living Room' as const, effort: 6, kind: 'chore' as const };
     const events: EngineEvent[] = [
-      { type: 'peek', to: 'a', reveals: [{ owner: 'b', slot: 0, card: secret }] },
+      { type: 'peek', to: 'a', reason: 'action', reveals: [{ owner: 'b', slot: 0, card: secret }] },
       { type: 'drawnCard', to: 'a', card: secret },
     ];
 
