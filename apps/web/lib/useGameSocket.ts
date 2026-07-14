@@ -16,6 +16,7 @@ import type {
   ServerMessage,
 } from '@lazy-sunday/server/protocol';
 import { WS_URL } from './config';
+import { appendEvent, type SequencedEvent } from './eventLog';
 
 export interface StoredIdentity {
   playerId: PlayerId;
@@ -41,6 +42,8 @@ export interface TurnTimer {
   players: PlayerId[];
 }
 
+export type GameEvent = SequencedEvent<EngineEvent>;
+
 export interface GameSocket {
   /** Raw socket status. */
   status: 'connecting' | 'open' | 'closed';
@@ -49,8 +52,8 @@ export interface GameSocket {
   lobby: LobbyState | null;
   view: RoundView | null;
   roundNumber: number;
-  /** Filtered engine events, newest last (capped). */
-  events: EngineEvent[];
+  /** Filtered engine events with client-local sequence IDs, newest last (capped). */
+  events: GameEvent[];
   /** Session-level events (Great Escape, match over), newest last (capped). */
   sessionEvents: SessionEvent[];
   /** The most recent session event, if any — convenient for ceremony banners. */
@@ -104,7 +107,7 @@ export function useGameSocket(roomCode: string): GameSocket {
   const [lobby, setLobby] = useState<LobbyState | null>(null);
   const [view, setView] = useState<RoundView | null>(null);
   const [roundNumber, setRoundNumber] = useState(0);
-  const [events, setEvents] = useState<EngineEvent[]>([]);
+  const [events, setEvents] = useState<GameEvent[]>([]);
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
   const [reactions, setReactions] = useState<ReactionEvent[]>([]);
   const [turnTimer, setTurnTimer] = useState<TurnTimer>({ deadline: null, players: [] });
@@ -113,6 +116,7 @@ export function useGameSocket(roomCode: string): GameSocket {
   const wsRef = useRef<WebSocket | null>(null);
   const pendingProfile = useRef<{ name: string; color: string } | null>(null);
   const closedByUs = useRef(false);
+  const eventSequence = useRef(0);
 
   const rawSend = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -187,12 +191,12 @@ export function useGameSocket(roomCode: string): GameSocket {
               players: msg.players,
             });
             break;
-          case 'event':
-            setEvents((prev) => {
-              const next = [...prev, msg.event];
-              return next.length > MAX_EVENTS ? next.slice(next.length - MAX_EVENTS) : next;
-            });
+          case 'event': {
+            eventSequence.current += 1;
+            const sequence = eventSequence.current;
+            setEvents((prev) => appendEvent(prev, msg.event, sequence, MAX_EVENTS));
             break;
+          }
           case 'error':
             setLastError({ code: String(msg.code), message: msg.message });
             break;

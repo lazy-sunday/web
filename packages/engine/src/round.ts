@@ -99,6 +99,7 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
       events.push({
         type: 'peek',
         to: player.id,
+        reason: 'setup', // §3.3 once-only setup peek — the long reveal
         reveals: [
           { owner: player.id, slot: a, card: player.list[a]! },
           { owner: player.id, slot: b, card: player.list[b]! },
@@ -303,7 +304,7 @@ function handleActionInput(
     case 'Check the List': {
       // §5: peek at ONE of your own cards.
       if (!isSlot(me.list, input.slot)) return fail('invalidSlot', 'no card in that slot');
-      events.push({ type: 'peek', to: playerId, reveals: [{ owner: playerId, slot: input.slot, card: me.list[input.slot]! }] });
+      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot: input.slot, card: me.list[input.slot]! }] });
       events.push({ type: 'checkedTheList', player: playerId, slot: input.slot });
       finishAction(state, events);
       return { ok: true, state, events };
@@ -312,7 +313,7 @@ function handleActionInput(
     case 'Knock It Out': {
       // §5: peek at ONE of your own cards; you MAY then discard it (any value).
       if (!isSlot(me.list, input.slot)) return fail('invalidSlot', 'no card in that slot');
-      events.push({ type: 'peek', to: playerId, reveals: [{ owner: playerId, slot: input.slot, card: me.list[input.slot]! }] });
+      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot: input.slot, card: me.list[input.slot]! }] });
       events.push({ type: 'knockItOutPeeked', player: playerId, slot: input.slot });
       pa.step = 'knockItOutDecision';
       pa.knockSlot = input.slot;
@@ -361,7 +362,7 @@ function handleActionInput(
       const target = byId(input.targetId);
       if (!target || target.id === playerId) return fail('invalidTarget', 'Snoop targets an opponent');
       if (!isSlot(target.list, input.slot)) return fail('invalidSlot', 'no card in that slot');
-      events.push({ type: 'peek', to: playerId, reveals: [{ owner: target.id, slot: input.slot, card: target.list[input.slot]! }] });
+      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: target.id, slot: input.slot, card: target.list[input.slot]! }] });
       events.push({ type: 'snooped', player: playerId, targetId: target.id, slot: input.slot });
       finishAction(state, events);
       return { ok: true, state, events };

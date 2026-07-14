@@ -108,6 +108,10 @@ describe('setup peek (§3.3)', () => {
     const r = ok(applyCommand(s, { type: 'setupPeek', player: 'a', slots: [0, 3] }));
     const peek = evt(r.events, 'peek');
     expect(peek.to).toBe('a');
+    // §3.3 setup peek carries its own reason so the client can time the long
+    // 10s reveal from the event, not from a view phase that may already have
+    // advanced to `turn` for the last player to confirm (issue #28).
+    expect(peek.reason).toBe('setup');
     expect(peek.reveals.map((x) => x.slot)).toEqual([0, 3]);
     expect(peek.reveals[0]!.card).toEqual(s.players[0]!.list[0]);
     // once, and never again
@@ -126,6 +130,18 @@ describe('setup peek (§3.3)', () => {
     const r2 = ok(applyCommand(r1.state, { type: 'setupPeek', player: 'b', slots: [4, 5] }));
     expect(r2.state.phase).toBe('turn');
     expect(evt(r2.events, 'turnStarted').player).toBe('b'); // startingPlayer: 1
+  });
+
+  it('the LAST player to confirm still gets a setup-reason peek in the same batch that advances to `turn` (issue #28)', () => {
+    const r1 = ok(applyCommand(fresh(), { type: 'setupPeek', player: 'a', slots: [0, 1] }));
+    const r2 = ok(applyCommand(r1.state, { type: 'setupPeek', player: 'b', slots: [4, 5] }));
+    // This single command emits the peek AND flips the phase to `turn`. The peek
+    // must still be tagged `setup` so the client times the full 10s reveal — the
+    // phase is not a reliable signal here.
+    expect(r2.state.phase).toBe('turn');
+    const peek = evt(r2.events, 'peek');
+    expect(peek.to).toBe('b');
+    expect(peek.reason).toBe('setup');
   });
 
   it('no turn actions are allowed during setup peek', () => {

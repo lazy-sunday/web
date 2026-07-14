@@ -24,6 +24,7 @@ describe('Check the List (§5)', () => {
     }));
     const peek = evt(r.events, 'peek');
     expect(peek.to).toBe('a');
+    expect(peek.reason).toBe('action'); // §5 granted peek — the short reveal
     expect(peek.reveals).toEqual([{ owner: 'a', slot: 2, card: player(r.state, 'a').list[2] }]);
     expect(peek.reveals[0]!.card.name).toBe('Water the Plants');
     expect(r.state.pendingAction).toBeNull();
@@ -161,6 +162,7 @@ describe('Snoop (§5)', () => {
     }));
     const peek = evt(r.events, 'peek');
     expect(peek.to).toBe('a');
+    expect(peek.reason).toBe('action'); // §5 Snoop is a short granted peek
     expect(peek.reveals[0]).toEqual({ owner: 'c', slot: 0, card: player(r.state, 'c').list[0] });
     expect(peek.reveals[0]!.card.name).toBe('Vacuum the Living Room');
   });

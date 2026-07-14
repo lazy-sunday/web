@@ -130,9 +130,16 @@ export interface PeekReveal {
   card: Card;
 }
 
+/** Why a peek was granted. The setup peek (§3.3) is the long, once-only 10s look;
+ *  every rule-granted in-play peek (Check the List, Knock It Out, Snoop — §5) is a
+ *  shorter look. The client uses this to time the reveal from the EVENT itself
+ *  rather than from its live view phase, which can already have advanced to `turn`
+ *  by the time the last setup peek is processed (issue #28). */
+export type PeekReason = 'setup' | 'action';
+
 export type EngineEvent =
   // -- private (have `to`) --
-  | { type: 'peek'; to: PlayerId; reveals: PeekReveal[] }
+  | { type: 'peek'; to: PlayerId; reason: PeekReason; reveals: PeekReveal[] }
   | { type: 'drawnCard'; to: PlayerId; card: Card }
   // -- public --
   | { type: 'setupPeeked'; player: PlayerId }
