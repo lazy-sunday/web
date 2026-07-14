@@ -2,10 +2,11 @@
 
 // The real card table (Milestone 3). Replaces TablePlaceholder.
 //
-// Layout: opponents' rows stacked above (small), my row pinned at the bottom
-// (large), deck + DONE pile centered between them. Everything face-down
-// renders from the card-back SVG; the only faces ever shown are the DONE
-// top (always public) and whatever `usePeeks`/`myDrawnCard` grants me.
+// Layout: the shared piles lead the compact table, your list becomes a sticky
+// tray, and opponents follow in stable seat order inside a responsive grid.
+// Everything face-down renders from the card-back SVG; the only faces ever
+// shown are the DONE top (always public) and whatever `usePeeks`/`myDrawnCard`
+// grants me.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardName, EngineEvent, PlayerId } from '@lazy-sunday/engine';
@@ -18,6 +19,7 @@ import { useCountdown } from '../lib/useCountdown';
 import { useSound } from '../lib/useSound';
 import { useGameSounds } from '../lib/useGameSounds';
 import { renderSlotsFor } from '../lib/slots';
+import { orderOpponentSeats } from '../lib/tableSeats';
 import { ActionModal } from './ActionModal';
 import { CardBack, CardFace } from './Card';
 import { FloatingReactions, ReactionBar } from './ReactionBar';
@@ -111,7 +113,7 @@ export function GameTable({ game }: { game: Game }) {
   const myId = me.playerId;
   const isMyTurn = view.currentPlayer === myId;
   const myPlayerView = view.players.find((p) => p.id === myId);
-  const opponents = view.players.filter((p) => p.id !== myId);
+  const opponentSeats = orderOpponentSeats(view.players, lobby.players, myId);
   const myListSize = myPlayerView?.listSize ?? 0;
   const canSelectSlapTarget = view.doneTop !== null && view.phase !== 'action' && view.pendingGift === null && pickMode === null;
   const canSelectOpponentSlapTarget = canSelectSlapTarget && myListSize > 0;
@@ -155,39 +157,21 @@ export function GameTable({ game }: { game: Game }) {
         <SetupPeekPanel game={game} peeks={peeks} inFlight={inFlight} sendGuarded={sendGuarded} />
       ) : (
         <div className="table-stage">
-          <div className="opponent-rows">
-            {opponents.map((p) => (
-              <OpponentRow
-                key={p.id}
-                playerId={p.id}
-                name={nameOf(p.id)}
-                color={colorOf(p.id)}
-                listSize={p.listSize}
-                slots={renderSlotsFor(p)}
-                isCurrent={view.currentPlayer === p.id}
-                isCaller={view.caller === p.id}
-                peeks={peeks}
-                canSelectSlapTarget={canSelectOpponentSlapTarget}
-                selectedSlapTarget={selectedSlapTarget}
-                activityVisual={spotlight?.visual}
-                onSelectSlapTarget={onSelectSlapTarget}
-              />
-            ))}
+          <div className="table-center-zone" id="shared-piles">
+            <ActionAnnouncement entry={spotlight} />
+
+            <CenterPiles
+              game={game}
+              myListSize={myPlayerView?.listSize ?? 0}
+              inFlight={inFlight}
+              sendGuarded={sendGuarded}
+              isMyTurn={isMyTurn}
+              pickMode={pickMode}
+              onStartKeepPick={() => setPickMode('keep')}
+              onStartTakeFromDone={() => setPickMode('takeFromDone')}
+              onCancelPick={() => setPickMode(null)}
+            />
           </div>
-
-          <ActionAnnouncement entry={spotlight} />
-
-          <CenterPiles
-            game={game}
-            myListSize={myPlayerView?.listSize ?? 0}
-            inFlight={inFlight}
-            sendGuarded={sendGuarded}
-            isMyTurn={isMyTurn}
-            pickMode={pickMode}
-            onStartKeepPick={() => setPickMode('keep')}
-            onStartTakeFromDone={() => setPickMode('takeFromDone')}
-            onCancelPick={() => setPickMode(null)}
-          />
 
           <MyRow
             game={game}
@@ -204,6 +188,34 @@ export function GameTable({ game }: { game: Game }) {
             activityVisual={spotlight?.visual}
             onSelectSlapTarget={onSelectSlapTarget}
           />
+
+          <section className="opponent-zone" aria-labelledby="opponents-heading">
+            <div className="opponent-zone-header">
+              <h2 id="opponents-heading">Around the table</h2>
+              <span>{opponentSeats.length} other player{opponentSeats.length === 1 ? '' : 's'}</span>
+            </div>
+            <div className="opponent-rows" data-opponent-count={opponentSeats.length}>
+              {opponentSeats.map(({ player: p, seat, connected }) => (
+                <OpponentRow
+                  key={p.id}
+                  playerId={p.id}
+                  seat={seat}
+                  connected={connected}
+                  name={nameOf(p.id)}
+                  color={colorOf(p.id)}
+                  listSize={p.listSize}
+                  slots={renderSlotsFor(p)}
+                  isCurrent={view.currentPlayer === p.id}
+                  isCaller={view.caller === p.id}
+                  peeks={peeks}
+                  canSelectSlapTarget={canSelectOpponentSlapTarget}
+                  selectedSlapTarget={selectedSlapTarget}
+                  activityVisual={spotlight?.visual}
+                  onSelectSlapTarget={onSelectSlapTarget}
+                />
+              ))}
+            </div>
+          </section>
 
           <SlapLayer
             game={game}
@@ -406,6 +418,8 @@ function SetupPeekPanel({
 
 function OpponentRow({
   playerId,
+  seat,
+  connected,
   name,
   color,
   listSize,
@@ -419,6 +433,8 @@ function OpponentRow({
   onSelectSlapTarget,
 }: {
   playerId: PlayerId;
+  seat: number;
+  connected: boolean;
   name: string;
   color: string;
   listSize: number;
@@ -431,14 +447,33 @@ function OpponentRow({
   activityVisual: ActivityVisual | undefined;
   onSelectSlapTarget: (owner: PlayerId, slot: number) => void;
 }) {
+  const headingId = `opponent-seat-${playerId}`;
+
   return (
-    <div className="opponent-row" data-current={isCurrent}>
+    <section
+      className="opponent-row"
+      data-current={isCurrent}
+      data-connected={connected}
+      aria-labelledby={headingId}
+    >
       <div className="opponent-meta">
-        <span className="avatar-dot" style={{ background: color }} aria-hidden />
-        <span className="opponent-name">{name}</span>
-        {isCaller && <span className="caller-badge">NOT ME!</span>}
-        {isCurrent && <span className="turn-indicator" aria-label={`${name}'s turn`} />}
-        <span className="card-count">{listSize}</span>
+        <div className="opponent-identity">
+          <span className="avatar-dot" style={{ background: color }} aria-hidden />
+          <span
+            className="conn-dot"
+            data-connected={connected}
+            role="img"
+            aria-label={connected ? `${name} is connected` : `${name} is disconnected`}
+          />
+          <h3 className="opponent-name" id={headingId}>{name}</h3>
+        </div>
+        <span className="card-count" aria-label={`${listSize} cards`}>{listSize} cards</span>
+        <div className="opponent-status">
+          <span className="opponent-seat-number">Seat {seat + 1}</span>
+          <span className="opponent-presence-label">{connected ? 'Online' : 'Offline'}</span>
+          {isCaller && <span className="caller-badge">NOT ME!</span>}
+          {isCurrent && <span className="turn-indicator" aria-label={`${name}'s turn`}>TURN</span>}
+        </div>
       </div>
       <div className="opponent-cards" role="group" aria-label={`${name}'s chore list`}>
         {slots.map((slot) => {
@@ -470,7 +505,7 @@ function OpponentRow({
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
 
