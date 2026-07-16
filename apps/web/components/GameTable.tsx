@@ -149,6 +149,7 @@ export function GameTable({ game }: { game: Game }) {
       />
       <HouseRuleBadges toggles={lobby.toggles} />
       <PlayerPresenceBar lobby={lobby} meId={myId} />
+      <RoundRestartVotePanel game={game} nameOf={nameOf} />
       <ActivityLog entries={activityEntries} />
 
       {view.phase === 'setupPeek' ? (
@@ -222,6 +223,97 @@ export function GameTable({ game }: { game: Game }) {
         <ReactionBar onSend={game.sendReaction} />
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Restart vote: room coordination only. The live round keeps moving unless
+// every eligible connected player agrees to replace it with a fresh deal.
+
+function RoundRestartVotePanel({
+  game,
+  nameOf,
+}: {
+  game: Game;
+  nameOf: (id: PlayerId | null) => string;
+}) {
+  const { me, roundRestartVote: vote, roundNumber } = game;
+  if (!me) return null;
+
+  if (!vote) {
+    return (
+      <div className="round-restart-trigger">
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => game.send({ type: 'proposeRoundRestart' })}
+        >
+          Vote to restart round
+        </button>
+      </div>
+    );
+  }
+
+  if (vote.status === 'passed') {
+    return <p className="round-restart-result" role="status">Vote passed. Dealing round {roundNumber} again.</p>;
+  }
+  if (vote.status === 'rejected') {
+    return (
+      <div className="round-restart-result" role="status">
+        <span>{nameOf(vote.rejectedBy)} voted no. The round continues.</span>
+        <button type="button" className="btn btn-ghost" onClick={() => game.send({ type: 'proposeRoundRestart' })}>
+          Try another vote
+        </button>
+      </div>
+    );
+  }
+  if (vote.status === 'cancelled') {
+    return (
+      <div className="round-restart-result" role="status">
+        <span>
+          {vote.reason === 'rosterChanged'
+            ? 'The vote was cancelled because a player connected or disconnected.'
+            : 'The vote was cancelled because the round ended.'}
+        </span>
+        <button type="button" className="btn btn-ghost" onClick={() => game.send({ type: 'proposeRoundRestart' })}>
+          Start a new vote
+        </button>
+      </div>
+    );
+  }
+
+  const eligible = vote.eligibleVoters.includes(me.playerId);
+  const votedYes = vote.yesVotes.includes(me.playerId);
+  return (
+    <section className="round-restart-vote" aria-labelledby={`round-restart-title-${vote.voteId}`}>
+      <div>
+        <h2 id={`round-restart-title-${vote.voteId}`}>{nameOf(vote.proposer)} wants a fresh deal</h2>
+        <p>Restart round {roundNumber} for everyone? Scores stay the same.</p>
+        <p className="round-restart-progress" role="status" aria-live="polite">
+          {vote.yesVotes.length} of {vote.eligibleVoters.length} voted yes
+        </p>
+      </div>
+      {eligible && !votedYes ? (
+        <div className="round-restart-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => game.send({ type: 'voteRoundRestart', voteId: vote.voteId, approve: true })}
+          >
+            Yes, restart
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => game.send({ type: 'voteRoundRestart', voteId: vote.voteId, approve: false })}
+          >
+            No, keep playing
+          </button>
+        </div>
+      ) : (
+        <p className="round-restart-recorded">{votedYes ? 'Your yes vote is in.' : 'You are not part of this vote.'}</p>
+      )}
+    </section>
   );
 }
 
