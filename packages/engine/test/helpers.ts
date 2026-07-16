@@ -52,6 +52,7 @@ export function makeRound(opts: MakeRoundOpts, pool = new Pool()): RoundState {
     list: pool.takeAll(p.list),
     slotPositions: p.list.map((_, i) => i),
     skipNextTurn: p.skip ?? false,
+    setupPeekSlots: [],
     setupPeeked: true,
   }));
   const done = pool.takeAll(opts.done ?? ['Feed the Cat']).reverse(); // engine: top = last

@@ -27,6 +27,8 @@ export interface RoundView {
    *  what clients echo back as `expectedTopId` when slapping. */
   doneTop: Card | null;
   players: PlayerView[];
+  /** Setup slots selected by this view's recipient. Never includes another player's selections. */
+  mySetupPeekSlots: number[];
   /** The drawn card, present ONLY in the current player's own view during 'drawn'. */
   myDrawnCard: Card | null;
   pendingAction: {
@@ -44,6 +46,7 @@ export interface RoundView {
 export function viewFor(state: RoundState, playerId: PlayerId): RoundView {
   const inPlay = state.phase === 'turn' || state.phase === 'drawn' || state.phase === 'action';
   const pa = state.pendingAction;
+  const recipient = state.players.find((p) => p.id === playerId);
   return {
     phase: state.phase,
     currentPlayer: inPlay ? state.players[state.turn]!.id : null,
@@ -59,6 +62,7 @@ export function viewFor(state: RoundState, playerId: PlayerId): RoundView {
       skipNextTurn: p.skipNextTurn,
       setupPeeked: p.setupPeeked,
     })),
+    mySetupPeekSlots: recipient?.setupPeekSlots.slice() ?? [],
     myDrawnCard:
       state.phase === 'drawn' && state.players[state.turn]!.id === playerId && state.drawnCard
         ? { ...state.drawnCard }

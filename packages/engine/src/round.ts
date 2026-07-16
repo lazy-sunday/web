@@ -30,6 +30,7 @@ export interface RoundConfig {
 }
 
 const CARDS_PER_PLAYER = 6; // §3.1
+export const SETUP_PEEK_MS = 10_000;
 
 export function createRound(config: RoundConfig): RoundState {
   const n = config.players.length;
@@ -47,6 +48,7 @@ export function createRound(config: RoundConfig): RoundState {
     list: deck.splice(0, CARDS_PER_PLAYER),
     slotPositions: Array.from({ length: CARDS_PER_PLAYER }, (_, i) => i),
     skipNextTurn: false,
+    setupPeekSlots: [],
     setupPeeked: false,
   }));
 
@@ -90,26 +92,23 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
   switch (cmd.type) {
     case 'setupPeek': {
       if (state.phase !== 'setupPeek') return fail('wrongPhase', 'setup peek is over');
-      if (player.setupPeeked) return fail('alreadyPeeked', 'you already peeked — once, and never again (§3.3)');
-      const [a, b] = cmd.slots;
-      if (a === b || !isSlot(player.list, a) || !isSlot(player.list, b)) {
-        return fail('invalidSlot', 'pick two different cards from your own list');
+      if (player.setupPeeked) return fail('alreadyPeeked', 'your setup peek has ended');
+      if (!isSlot(player.list, cmd.slot)) {
+        return fail('invalidSlot', 'pick a card from your own list');
       }
-      player.setupPeeked = true;
+      if (player.setupPeekSlots.includes(cmd.slot)) {
+        return fail('invalidSlot', 'pick a different card');
+      }
+      if (player.setupPeekSlots.length >= 2) {
+        return fail('alreadyPeeked', 'you already selected two cards (§3.3)');
+      }
+      player.setupPeekSlots.push(cmd.slot);
       events.push({
         type: 'peek',
         to: player.id,
-        reason: 'setup', // §3.3 once-only setup peek — the long reveal
-        reveals: [
-          { owner: player.id, slot: a, card: player.list[a]! },
-          { owner: player.id, slot: b, card: player.list[b]! },
-        ],
+        reason: 'setup',
+        reveals: [{ owner: player.id, slot: cmd.slot, card: player.list[cmd.slot]! }],
       });
-      events.push({ type: 'setupPeeked', player: player.id });
-      if (state.players.every((p) => p.setupPeeked)) {
-        state.phase = 'turn';
-        events.push({ type: 'turnStarted', player: current(state).id, finalTurn: false });
-      }
       return { ok: true, state, events };
     }
 
