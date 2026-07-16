@@ -77,16 +77,15 @@ export function handleConnection(socket: WebSocket): void {
 
   socket.on('close', () => {
     const { room, player } = conn;
-    if (!room || !player) return;
-    if (player.socket === socket) {
-      player.socket = null;
-      player.connected = false;
-      player.disconnectedAt = Date.now();
-    }
+    if (!room || !player || player.socket !== socket) return;
+    player.socket = null;
+    player.connected = false;
+    player.disconnectedAt = Date.now();
     markConnectivity(room);
     if (maybeReassignHost(room)) {
       // Host badge moved after a long host absence.
     }
+    cancelRoundRestartVote(room, 'rosterChanged');
     broadcastLobby(room);
     // Timers keep running: a disconnected player's turn auto-skips on timeout.
   });
@@ -124,6 +123,12 @@ function handleMessage(conn: Conn, msg: ClientMessage): void {
     case 'nextRound':
       handleNextRound(room, player);
       return;
+    case 'proposeRoundRestart':
+      handleProposeRoundRestart(room, player);
+      return;
+    case 'voteRoundRestart':
+      handleVoteRoundRestart(room, player, msg);
+      return;
     case 'reaction':
       broadcast(room, { type: 'reaction', player: player.id, emoji: msg.emoji });
       return;
@@ -159,6 +164,7 @@ function handleJoin(conn: Conn, msg: Extract<ClientMessage, { type: 'join' }>): 
       conn.player = existing;
       markConnectivity(room);
       send(conn.socket, { type: 'joined', playerId: existing.id, token: existing.token, roomCode: room.code });
+      cancelRoundRestartVote(room, 'rosterChanged');
       broadcastLobby(room);
       // Their hidden knowledge is only what past events already told them — the
       // client keeps its own peek memory. We resend just the current redacted view.
@@ -301,6 +307,94 @@ function handleNextRound(room: Room, player: RoomPlayer): void {
   startRound(room, room.roundNumber + 1);
 }
 
+function handleProposeRoundRestart(room: Room, player: RoomPlayer): void {
+  if (room.status !== 'playing' || !room.round) {
+    sendTo(player, { type: 'error', code: 'wrongStatus', message: 'there is no active round to restart' });
+    return;
+  }
+  if (room.roundRestartVote) {
+    sendTo(player, { type: 'error', code: 'voteActive', message: 'a round restart vote is already open' });
+    return;
+  }
+  if (!player.connected || player.socket === null) {
+    sendTo(player, { type: 'error', code: 'notEligible', message: 'only connected players can start a vote' });
+    return;
+  }
+
+  const eligibleVoters = room.players
+    .filter((candidate) => candidate.connected)
+    .sort((a, b) => a.seat - b.seat)
+    .map((candidate) => candidate.id);
+  const voteId = room.nextRoundRestartVoteId++;
+  room.roundRestartVote = {
+    status: 'active',
+    voteId,
+    proposer: player.id,
+    eligibleVoters,
+    yesVotes: [player.id],
+  };
+  broadcast(room, { type: 'roundRestartVote', update: room.roundRestartVote });
+  if (eligibleVoters.length === 1) passRoundRestartVote(room, voteId);
+}
+
+function handleVoteRoundRestart(
+  room: Room,
+  player: RoomPlayer,
+  msg: Extract<ClientMessage, { type: 'voteRoundRestart' }>,
+): void {
+  if (room.status !== 'playing' || !room.round) {
+    sendTo(player, { type: 'error', code: 'wrongStatus', message: 'there is no active round to restart' });
+    return;
+  }
+  const vote = room.roundRestartVote;
+  if (!vote || vote.voteId !== msg.voteId) {
+    sendTo(player, { type: 'error', code: 'staleVote', message: 'that restart vote is no longer open' });
+    return;
+  }
+  if (!player.connected || !vote.eligibleVoters.includes(player.id)) {
+    sendTo(player, { type: 'error', code: 'notEligible', message: 'you are not eligible to vote on this proposal' });
+    return;
+  }
+  if (vote.yesVotes.includes(player.id)) {
+    sendTo(player, { type: 'error', code: 'duplicateVote', message: 'your vote is already recorded' });
+    return;
+  }
+  if (!msg.approve) {
+    room.roundRestartVote = null;
+    broadcast(room, {
+      type: 'roundRestartVote',
+      update: { status: 'rejected', voteId: vote.voteId, rejectedBy: player.id },
+    });
+    return;
+  }
+
+  const updated = { ...vote, yesVotes: [...vote.yesVotes, player.id] };
+  room.roundRestartVote = updated;
+  broadcast(room, { type: 'roundRestartVote', update: updated });
+  if (updated.yesVotes.length === updated.eligibleVoters.length) {
+    passRoundRestartVote(room, updated.voteId);
+  }
+}
+
+function passRoundRestartVote(room: Room, voteId: number): void {
+  room.roundRestartVote = null;
+  clearTimers(room);
+  broadcast(room, { type: 'roundRestartVote', update: { status: 'passed', voteId } });
+  // A restart is a fresh deal of the same round. Session scores, Great Escape,
+  // match state, round number, and starting seat all stay unchanged.
+  startRound(room, room.roundNumber);
+}
+
+function cancelRoundRestartVote(room: Room, reason: 'rosterChanged' | 'roundEnded'): void {
+  const vote = room.roundRestartVote;
+  if (!vote) return;
+  room.roundRestartVote = null;
+  broadcast(room, {
+    type: 'roundRestartVote',
+    update: { status: 'cancelled', voteId: vote.voteId, reason },
+  });
+}
+
 function startRound(room: Room, roundNumber: number): void {
   const seatOrder = seatOrderedIds(room);
   room.roundNumber = roundNumber;
@@ -386,6 +480,7 @@ function applyToRoom(room: Room, cmd: Command, feedbackTo: RoomPlayer | null): b
 
   const revealed = result.events.some((e: EngineEvent) => e.type === 'roundRevealed');
   if (revealed && room.round.result && room.session) {
+    cancelRoundRestartVote(room, 'roundEnded');
     // Score the round into the session, then let the host deal the next one.
     const { session, events: sessionEvents } = applyRoundScores(room.session, room.round.result.scores);
     room.session = session;
