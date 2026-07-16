@@ -4,6 +4,7 @@ import type { Card, EngineEvent } from '@lazy-sunday/engine';
 import {
   GRANTED_PEEK_MS,
   SETUP_PEEK_MS,
+  deadlineForPeek,
   peekTtlMs,
   reducePeek,
   type ActivePeek,
@@ -61,6 +62,32 @@ describe('reducePeek — issue #28 setup-peek race', () => {
     assert.equal(peeks.get('p_last:4')?.expiresAt, now + SETUP_PEEK_MS);
   });
 
+  it('uses the first tap deadline for a later setup card', () => {
+    const firstAt = 1_000;
+    const first: PeekEvent = {
+      type: 'peek',
+      to: 'p',
+      reason: 'setup',
+      reveals: [{ owner: 'p', slot: 0, card: card('first', 'Nap', 0, 'chore') }],
+    };
+    const second: PeekEvent = {
+      type: 'peek',
+      to: 'p',
+      reason: 'setup',
+      reveals: [{ owner: 'p', slot: 3, card: card('second', 'Fold the Laundry', 5, 'chore') }],
+    };
+
+    const afterFirst = reducePeek(empty, first, firstAt);
+    const sharedDeadline = deadlineForPeek(afterFirst, second, firstAt + 3_000);
+    const afterSecond = reducePeek(afterFirst, second, firstAt + 3_000);
+
+    assert.equal(sharedDeadline, firstAt + SETUP_PEEK_MS);
+    assert.equal(afterSecond.get('p:0')?.expiresAt, firstAt + SETUP_PEEK_MS);
+    assert.equal(afterSecond.get('p:3')?.expiresAt, firstAt + SETUP_PEEK_MS);
+    assert.equal(afterSecond.get('p:0')?.reason, 'setup');
+    assert.equal(afterSecond.get('p:3')?.reason, 'setup');
+  });
+
   it('processes a setup peek exactly once across re-renders', () => {
     const event: PeekEvent = {
       type: 'peek',
@@ -116,5 +143,25 @@ describe('reducePeek — issue #28 setup-peek race', () => {
       now,
     );
     assert.equal(peeks.get('q:2')?.expiresAt, now + GRANTED_PEEK_MS);
+  });
+
+  it('gives an action peek a fresh 4s deadline even while setup cards are open', () => {
+    const setup: PeekEvent = {
+      type: 'peek',
+      to: 'p',
+      reason: 'setup',
+      reveals: [{ owner: 'p', slot: 0, card: card('setup', 'Nap', 0, 'chore') }],
+    };
+    const action: PeekEvent = {
+      type: 'peek',
+      to: 'p',
+      reason: 'action',
+      reveals: [{ owner: 'q', slot: 1, card: card('action', 'Snoop', 11, 'action') }],
+    };
+    const afterSetup = reducePeek(empty, setup, 100);
+    const afterAction = reducePeek(afterSetup, action, 2_000);
+
+    assert.equal(afterAction.get('q:1')?.expiresAt, 2_000 + GRANTED_PEEK_MS);
+    assert.equal(afterAction.get('p:0')?.expiresAt, 100 + SETUP_PEEK_MS);
   });
 });

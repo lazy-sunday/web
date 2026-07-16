@@ -71,9 +71,10 @@ export function GameTable({ game }: { game: Game }) {
   const spotlight = useActivitySpotlight(latestActivity);
 
   const [inFlight, setInFlight] = useState(false);
+  const mySetupPeekSlotsKey = view?.mySetupPeekSlots.join(',') ?? '';
   useEffect(() => {
     setInFlight(false);
-  }, [view?.phase, view?.currentPlayer, view?.pendingAction, view?.myDrawnCard]);
+  }, [view?.phase, view?.currentPlayer, view?.pendingAction, view?.myDrawnCard, mySetupPeekSlotsKey]);
 
   // "Pick a slot" mode is shared between the pile that started it (DONE pile)
   // and MyRow (which renders the pickable slots), so it lives up here. Hooks
@@ -275,7 +276,7 @@ function TableBanner({
             ? `${nameOf(view.currentPlayer)}'s turn`
             : ''}
       </span>
-      <TurnCountdown turnTimer={turnTimer} myId={myId} />
+      {view.phase !== 'setupPeek' && <TurnCountdown turnTimer={turnTimer} myId={myId} />}
       {view.caller && <span>&quot;NOT ME!&quot; called by {nameOf(view.caller)}</span>}
     </div>
   );
@@ -307,8 +308,9 @@ function TurnCountdown({ turnTimer, myId }: { turnTimer: Game['turnTimer']; myId
 }
 
 // ---------------------------------------------------------------------------
-// Setup peek: tap 2 of your own slots, send setupPeek, then the peeked hook
-// shows both faces for 10s.
+// Setup peek: each tap is sent immediately and revealed in place. Both cards
+// share the first tap's 10-second window; the panel stays mounted until every
+// player's window has finished.
 
 function SetupPeekPanel({
   game,
@@ -322,37 +324,39 @@ function SetupPeekPanel({
   sendGuarded: (fn: () => void) => void;
 }) {
   const { view, me } = game;
-  const [selected, setSelected] = useState<number[]>([]);
+  const peekSeconds = useCountdown(game.turnTimer.deadline);
   if (!view || !me) return null;
 
   const myView = view.players.find((p) => p.id === me.playerId);
   const alreadyPeeked = myView?.setupPeeked ?? false;
+  const selected = view.mySetupPeekSlots;
+  const windowEnded = alreadyPeeked || (selected.length > 0 && peekSeconds === 0);
   const slots = renderSlotsFor(myView);
   const othersWaiting = view.players.filter((p) => p.id !== me.playerId && !p.setupPeeked);
 
-  function toggleSlot(i: number) {
-    if (alreadyPeeked || inFlight) return;
-    setSelected((prev) => {
-      if (prev.includes(i)) return prev.filter((s) => s !== i);
-      if (prev.length >= 2) return prev;
-      return [...prev, i];
-    });
+  function peekAtSlot(slot: number) {
+    if (windowEnded || inFlight || selected.length >= 2 || selected.includes(slot)) return;
+    sendGuarded(() => game.sendCommand({ type: 'setupPeek', slot }));
   }
 
-  function confirmPeek() {
-    if (selected.length !== 2) return;
-    const slots: [number, number] = [selected[0]!, selected[1]!];
-    sendGuarded(() => game.sendCommand({ type: 'setupPeek', slots }));
-  }
+  const instruction = windowEnded
+    ? 'Your peek is finished. Keep those cards in mind while everyone else finishes.'
+    : selected.length === 0
+      ? 'Tap a card to reveal it. You can reveal up to two before the timer ends.'
+      : selected.length === 1
+        ? 'One card revealed. Tap one more card before the timer ends.'
+        : 'You picked two cards. Your peek ends when the timer runs out.';
 
   return (
-    <div className="setup-peek-panel">
+    <div className="setup-peek-panel" data-window-ended={windowEnded}>
       <h2 className="setup-peek-title">Peek at 2 of your cards</h2>
-      <p className="setup-peek-sub">
-        {alreadyPeeked
-          ? 'You peeked. Memory is the game now — waiting for everyone else…'
-          : 'Tap two of your own cards below. You get one look, then they flip back for the whole round.'}
-      </p>
+      <p className="setup-peek-sub">{instruction}</p>
+
+      {selected.length > 0 && peekSeconds !== null && !windowEnded && (
+        <p className="setup-peek-timer" role="timer" aria-label={`Cards hide in ${peekSeconds} seconds`}>
+          Cards hide in <strong>{peekSeconds}s</strong>
+        </p>
+      )}
 
       <div className="my-list-row" role="group" aria-label="Your chore list">
         {slots.map((slot) => {
@@ -361,19 +365,21 @@ function SetupPeekPanel({
           }
           const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
           const isSelected = selected.includes(slot.cardSlot);
+          const disabled = windowEnded || inFlight || isSelected || selected.length >= 2;
           return (
             <button
               key={slot.visualSlot}
               type="button"
               className="slot-btn"
-              data-selected={isSelected}
-              disabled={alreadyPeeked || inFlight}
+              data-peek-selected={isSelected}
+              disabled={disabled}
+              aria-pressed={isSelected}
               aria-label={
                 peeked
                   ? `Your card, slot ${slot.visualSlot + 1}, revealed: ${peeked.name}`
                   : `Your card, slot ${slot.visualSlot + 1}, face down${isSelected ? ', selected for peek' : ''}`
               }
-              onClick={() => toggleSlot(slot.cardSlot!)}
+              onClick={() => peekAtSlot(slot.cardSlot!)}
             >
               {peeked ? <CardFace name={peeked.name as CardName} /> : <CardBack />}
             </button>
@@ -381,19 +387,10 @@ function SetupPeekPanel({
         })}
       </div>
 
-      {!alreadyPeeked && (
-        <button
-          type="button"
-          className="btn btn-primary btn-block"
-          disabled={selected.length !== 2 || inFlight}
-          onClick={confirmPeek}
-        >
-          {inFlight ? 'Peeking…' : selected.length === 2 ? 'Confirm peek' : `Pick ${2 - selected.length} more card${2 - selected.length === 1 ? '' : 's'}`}
-        </button>
-      )}
-
-      {alreadyPeeked && othersWaiting.length > 0 && (
-        <p className="waiting-line">Waiting on {othersWaiting.length} player{othersWaiting.length === 1 ? '' : 's'}…</p>
+      {windowEnded && othersWaiting.length > 0 && (
+        <p className="waiting-line" role="status" aria-live="polite">
+          Waiting on {othersWaiting.length} player{othersWaiting.length === 1 ? '' : 's'}…
+        </p>
       )}
     </div>
   );
