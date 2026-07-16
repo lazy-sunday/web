@@ -65,11 +65,13 @@ Important: `actionMeta.ts` is UI metadata only. The engine still validates every
 
 ## Peek Memory
 
-`lib/usePeeks.ts` builds temporary local memory from private `peek` events delivered to the current player.
+`lib/usePeeks.ts` builds temporary local memory from private `peek` events delivered to the current player. During setup, tapping a card sends its slot immediately. The first valid tap starts one 10-second window, and a second card selected during that window shares the original deadline. There is no confirmation step.
 
-- Setup peeks display for 10 seconds.
+- Setup peeks display until the first tap's 10-second deadline.
 - Granted peeks display for 4 seconds.
 - Once the timer expires, the card face disappears from the UI.
+
+Finishing a personal peek window does not move that player to the table. The setup panel remains in a waiting state until the server ends setup for the whole room.
 
 This matches the game design: memory is the player's responsibility. The server does not resend old hidden knowledge on reconnect.
 

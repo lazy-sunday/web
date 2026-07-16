@@ -116,9 +116,11 @@ The server tracks who the round is currently blocked on:
 - The pending action actor.
 - The pending gift giver.
 
-When a timer fires, the server sends engine command `forceSkipTurn`. The engine decides the proper timeout behavior: forfeit setup peek, discard drawn card, cancel action, give lowest-slot gift, or skip the turn.
+Setup timers are independent. Every player starts with the configured inactivity timeout. The first valid setup card tap replaces only that player's timer with a 10-second reveal deadline, and the second tap does not extend it. One player's input never resets another player's setup clock.
 
-Clients receive `turnTimer` with a remaining duration, not an absolute server timestamp. The browser converts it into a local deadline.
+When a timer fires, the server sends engine command `forceSkipTurn`. The engine ends that setup window, forfeiting any unused selection, or resolves the blocked in-game step by discarding a held card, cancelling an action, giving the lowest-slot gift, or skipping the turn. The first turn timer starts only after the final setup window ends.
+
+Clients receive `turnTimer` with a remaining duration, not an absolute server timestamp. During setup, each player receives their own true remaining time. During normal play, everyone receives the active player's remaining time. The browser converts that duration into a local deadline.
 
 ## Reactions
 

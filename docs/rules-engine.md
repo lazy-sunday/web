@@ -71,7 +71,7 @@ Do not add another serialization path for round state.
 
 ### Setup Peek
 
-Each player may peek at exactly two own cards once. The engine sends a private `peek` event and a public `setupPeeked` event. When all players have peeked, the round enters `turn`.
+Each player may reveal up to two different cards from their own list during one setup window. Each valid slot command emits a private one-card `peek` event and records that slot so duplicate or third selections are rejected. The server ends the window with `forceSkipTurn`; the engine then emits the public `setupPeeked` event. The round enters `turn` only after every player's window has ended or been forfeited.
 
 ### Draw and DONE Pile
 
