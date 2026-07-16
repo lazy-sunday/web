@@ -53,9 +53,9 @@ export interface Room {
   timers: Map<PlayerId, NodeJS.Timeout>;
   /** Delays the start of those timers while table activity is spotlighted. */
   timerStartDelay: NodeJS.Timeout | null;
-  /** Epoch ms when the current turn timer(s) fire, or null while the clock is
-   *  paused/inactive. Used to tell clients how long is left. */
-  turnDeadline: number | null;
+  /** Epoch ms when each authoritative timer fires. Setup-peek players can have
+   *  different deadlines; normal play has one entry for the current blocker. */
+  turnDeadlines: Map<PlayerId, number>;
   createdAt: number;
   /** When the room last had zero connected sockets (for GC), or null. */
   emptySince: number | null;
@@ -85,7 +85,7 @@ export function createRoom(deckCount = DEFAULT_DECK_COUNT): Room {
     roundNumber: 0,
     timers: new Map(),
     timerStartDelay: null,
-    turnDeadline: null,
+    turnDeadlines: new Map(),
     createdAt: Date.now(),
     emptySince: Date.now(),
   };
@@ -184,6 +184,7 @@ export function sweepRooms(now = Date.now()): string[] {
     if (room.emptySince !== null && now - room.emptySince >= EMPTY_ROOM_TTL_MS) {
       for (const t of room.timers.values()) clearTimeout(t);
       room.timers.clear();
+      room.turnDeadlines.clear();
       if (room.timerStartDelay) clearTimeout(room.timerStartDelay);
       room.timerStartDelay = null;
       rooms.delete(code);

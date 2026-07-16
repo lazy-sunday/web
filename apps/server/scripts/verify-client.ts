@@ -289,15 +289,18 @@ async function main(): Promise<void> {
 
   console.log('== setup peeks ==');
   for (const c of [alice, bob, carol]) {
-    const peek = c.waitEvent('peek');
-    c.send({ type: 'command', command: { type: 'setupPeek', slots: [0, 1] } });
-    const e = (await peek)['event'] as Json;
-    assert(
-      e['to'] === c.playerId && e['reveals'].length === 2 && CARD_NAMES.has(e['reveals'][0].card.name),
-      `${c.name} received their own 2-card peek`,
-    );
+    for (const slot of [0, 1]) {
+      const peek = c.waitEvent('peek');
+      c.send({ type: 'command', command: { type: 'setupPeek', slot } });
+      const e = (await peek)['event'] as Json;
+      assert(
+        e['to'] === c.playerId && e['reveals'].length === 1 && CARD_NAMES.has(e['reveals'][0].card.name),
+        `${c.name} received their private slot ${slot} peek`,
+      );
+    }
   }
-  await alice.waitFor((m) => m['type'] === 'view' && m['view'].phase === 'turn', 'turn phase');
+  assert(alice.view!['phase'] === 'setupPeek', 'table waits for setup peek windows to end');
+  await alice.waitFor((m) => m['type'] === 'view' && m['view'].phase === 'turn', 'turn phase', 15_000);
   assert(alice.view!['currentPlayer'] === alice.playerId, 'round 1 starts at seat 0 (alice)');
 
   const clientById = new Map([alice, bob, carol].map((c) => [c.playerId, c]));

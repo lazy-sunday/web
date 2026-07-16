@@ -468,23 +468,24 @@ async function main(): Promise<void> {
 
   console.log('== setup peeks (§3.3) ==');
   for (const c of ctx.all) {
-    const peek = c.waitEvent('peek');
-    c.cmd({ type: 'setupPeek', slots: [0, 1] });
-    const e = (await peek)['event'] as Json;
-    assert(e['to'] === c.playerId && e['reveals'].length === 2, `${c.name} received their own 2-card peek`);
+    for (const slot of [0, 1]) {
+      const peek = c.waitEvent('peek');
+      c.cmd({ type: 'setupPeek', slot });
+      const e = (await peek)['event'] as Json;
+      assert(e['to'] === c.playerId && e['reveals'].length === 1, `${c.name} received private slot ${slot} peek`);
+    }
   }
-  // §3.3: once, and never again. By the time all three have peeked the phase
-  // has already flipped to 'turn', so the engine's phase guard fires first
-  // (`wrongPhase`) rather than `alreadyPeeked` — both codes prove the same
-  // rule ("once, and never again"), so accept either.
+  assert(alice.view!['phase'] === 'setupPeek', 'setup remains visible until every peek window ends');
+  // §3.3 still caps setup knowledge at two cards, even though each card is now
+  // opened with its own tap.
   {
     const err = alice.waitFor((m) => m['type'] === 'error', 'second peek rejected');
-    alice.cmd({ type: 'setupPeek', slots: [2, 3] });
+    alice.cmd({ type: 'setupPeek', slot: 2 });
     const code = (await err)['code'];
-    assert(code === 'alreadyPeeked' || code === 'wrongPhase', `second setup peek rejected (§3.3), code=${code}`);
+    assert(code === 'alreadyPeeked', `third setup card rejected (§3.3), code=${code}`);
   }
   if (alice.view!['phase'] !== 'turn') {
-    await alice.waitFor((m) => m['type'] === 'view' && m['view'].phase === 'turn', 'turn phase');
+    await alice.waitFor((m) => m['type'] === 'view' && m['view'].phase === 'turn', 'turn phase', 15_000);
   }
 
   console.log('== table activity pauses the next turn timer ==');
@@ -1037,7 +1038,10 @@ async function exerciseOpponentSlapGift(ctx: Ctx): Promise<void> {
     assert((await err)['code'] === 'giftPending', 'other commands are blocked while a gift is pending (§6)');
   }
 
-  const bobListSizeBefore = alice.view!['players'].find((p: Json) => p.id === bob.playerId).listSize;
+  // Use the size captured before the slap. Waiting until after `slapCorrect`
+  // races the following view message and can capture the temporary one-card
+  // gap instead of Bob's original list size.
+  const bobListSizeBefore = targetInfo.listSize;
   const giftDone = bob.waitEvent('giftGiven');
   const bobSeesNoPeek = bob.received.length; // snapshot; we'll confirm no NEW peek arrives for bob
   carol.cmd({ type: 'giveCard', slot: 0 });
@@ -1383,10 +1387,17 @@ async function exerciseNotMeAndImBusy(ctx: Ctx): Promise<void> {
     await nextViews;
     if (ctx.alice.view?.['phase'] === 'setupPeek') {
       for (const c of ctx.all) {
-        const peek = c.waitEvent('peek').catch(() => null);
-        c.cmd({ type: 'setupPeek', slots: [0, 1] });
-        await peek;
+        for (const slot of [0, 1]) {
+          const peek = c.waitEvent('peek').catch(() => null);
+          c.cmd({ type: 'setupPeek', slot });
+          await peek;
+        }
       }
+      await ctx.alice.waitFor(
+        (m) => m['type'] === 'view' && m['view'].phase === 'turn',
+        'round 2 setup windows',
+        15_000,
+      );
       await driveToReveal(ctx);
       await assertCallerLockAndScoring(ctx);
     }

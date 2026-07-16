@@ -5,7 +5,24 @@ import {
   TABLE_ACTIVITY_SPOTLIGHT_MS,
   hasTableActivitySpotlight,
   isTableActivitySpotlightEventType,
+  parseClientMessage,
 } from './protocol';
+
+describe('client command protocol', () => {
+  it('accepts a single-slot setup peek command', () => {
+    assert.deepEqual(
+      parseClientMessage(JSON.stringify({ type: 'command', command: { type: 'setupPeek', slot: 2 } })),
+      { type: 'command', command: { type: 'setupPeek', slot: 2 } },
+    );
+  });
+
+  it('continues to reject client-authored force skips', () => {
+    assert.equal(
+      parseClientMessage(JSON.stringify({ type: 'command', command: { type: 'forceSkipTurn' } })),
+      null,
+    );
+  });
+});
 
 describe('table activity timer pause', () => {
   it('uses the shared seven-second spotlight duration', () => {
