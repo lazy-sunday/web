@@ -148,32 +148,59 @@ export type EngineEvent =
   | { type: 'setupPeeked'; player: PlayerId }
   | { type: 'turnStarted'; player: PlayerId; finalTurn: boolean }
   | { type: 'drew'; player: PlayerId }
-  /** Kept the drawn card at `slot`; the replaced card is face-up on DONE.
+  /** Kept the drawn card at compact `slot`; `visualSlot` is the original table
+   *  position for player-facing labels after discarded cards have left gaps.
    *  `discarded` is null when an empty-list player keeps (§9.2: "draw-and-keep
    *  only adds a card back" — there is nothing to replace). */
-  | { type: 'kept'; player: PlayerId; slot: number; discarded: Card | null }
+  | { type: 'kept'; player: PlayerId; slot: number; visualSlot?: number; discarded: Card | null }
   | { type: 'discarded'; player: PlayerId; card: Card; withAction: boolean }
-  /** Took DONE top (identity was public) into `slot`; replaced card now on DONE. */
-  | { type: 'tookFromDone'; player: PlayerId; slot: number; taken: Card; discarded: Card }
+  /** Took DONE top (identity was public) into compact `slot`; replaced card now on DONE. */
+  | { type: 'tookFromDone'; player: PlayerId; slot: number; visualSlot?: number; taken: Card; discarded: Card }
   | { type: 'actionStarted'; player: PlayerId; action: ActionName }
   | { type: 'actionCancelled'; player: PlayerId; action: ActionName }
   // action outcomes — positions are public, face-down identities are not
-  | { type: 'checkedTheList'; player: PlayerId; slot: number }
-  | { type: 'knockItOutPeeked'; player: PlayerId; slot: number }
+  | { type: 'checkedTheList'; player: PlayerId; slot: number; visualSlot?: number }
+  | { type: 'knockItOutPeeked'; player: PlayerId; slot: number; visualSlot?: number }
   | { type: 'knockedOut'; player: PlayerId; card: Card }
   | { type: 'knockItOutKept'; player: PlayerId }
-  | { type: 'traded'; player: PlayerId; mySlot: number; opponentId: PlayerId; opponentSlot: number }
-  | { type: 'switcherood'; player: PlayerId; a: PlayerId; aSlot: number; b: PlayerId; bSlot: number }
-  | { type: 'snooped'; player: PlayerId; targetId: PlayerId; slot: number }
-  | { type: 'notMyJobbed'; player: PlayerId; fromId: PlayerId; fromSlot: number; toId: PlayerId; toSlot: number }
-  | { type: 'landlordsNoticed'; player: PlayerId; targetId: PlayerId; slot: number }
+  | {
+      type: 'traded';
+      player: PlayerId;
+      mySlot: number;
+      myVisualSlot?: number;
+      opponentId: PlayerId;
+      opponentSlot: number;
+      opponentVisualSlot?: number;
+    }
+  | {
+      type: 'switcherood';
+      player: PlayerId;
+      a: PlayerId;
+      aSlot: number;
+      aVisualSlot?: number;
+      b: PlayerId;
+      bSlot: number;
+      bVisualSlot?: number;
+    }
+  | { type: 'snooped'; player: PlayerId; targetId: PlayerId; slot: number; visualSlot?: number }
+  | {
+      type: 'notMyJobbed';
+      player: PlayerId;
+      fromId: PlayerId;
+      fromSlot: number;
+      fromVisualSlot?: number;
+      toId: PlayerId;
+      toSlot: number;
+      toVisualSlot?: number;
+    }
+  | { type: 'landlordsNoticed'; player: PlayerId; targetId: PlayerId; slot: number; visualSlot?: number }
   | { type: 'imBusied'; player: PlayerId; targetId: PlayerId }
   | { type: 'turnSkipped'; player: PlayerId; wasFinalTurn: boolean }
   // slaps — correct/wrong slaps expose the card face-up on the table, so identity is public
   | { type: 'slapCorrect'; player: PlayerId; owner: PlayerId; slot: number; card: Card; giftPending: boolean }
   | { type: 'slapWrong'; player: PlayerId; owner: PlayerId; slot: number; card: Card; penaltyDrawn: boolean }
   | { type: 'slapTooLate'; player: PlayerId }
-  | { type: 'giftGiven'; from: PlayerId; to: PlayerId; toSlot: number }
+  | { type: 'giftGiven'; from: PlayerId; to: PlayerId; toSlot: number; toVisualSlot?: number }
   | { type: 'notMeCalled'; caller: PlayerId }
   | { type: 'deckReshuffled'; deckSize: number }
   | { type: 'roundRevealed'; result: RoundResult };

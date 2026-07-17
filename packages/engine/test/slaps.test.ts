@@ -72,7 +72,7 @@ describe('"Done it!" quick discard (§6)', () => {
     // giver chooses which card; it fills the gap; receiver may not look (no peek event)
     const gifted = ok(applyCommand(slapped.state, { type: 'giveCard', player: 'a', slot: 2 }));
     const given = evt(gifted.events, 'giftGiven');
-    expect(given).toEqual({ type: 'giftGiven', from: 'a', to: 'b', toSlot: 0 });
+    expect(given).toEqual({ type: 'giftGiven', from: 'a', to: 'b', toSlot: 0, toVisualSlot: 0 });
     expect(player(gifted.state, 'a').list.map((c) => c.name)).toEqual(['Feed the Cat', 'Nap']);
     expect(player(gifted.state, 'b').list.map((c) => c.name)).toEqual(['Snoop', 'Vacuum the Living Room']);
     expect(viewFor(gifted.state, 'a').players.find((p) => p.id === 'b')!.listSlots).toEqual([true, true]);

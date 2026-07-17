@@ -133,21 +133,23 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
         // §9.2: an empty-list player's draw-and-keep "only adds a card back" —
         // there is no replaced card to discard.
         if (cmd.slot !== 0) return fail('invalidSlot', 'your list is empty — the card goes to slot 0');
-        appendCard(player, drawn);
+        const slot = appendCard(player, drawn);
+        const visualSlot = visualSlotAt(player, slot);
         state.drawnCard = null;
-        events.push({ type: 'kept', player: player.id, slot: 0, discarded: null });
+        events.push({ type: 'kept', player: player.id, slot, visualSlot, discarded: null });
         endTurn(state, events);
         return { ok: true, state, events };
       }
       if (!isSlot(player.list, cmd.slot)) return fail('invalidSlot', 'no card in that slot');
       // §4A: place it face-down into your list, discard the replaced card face-up.
       const replaced = player.list[cmd.slot]!;
+      const visualSlot = visualSlotAt(player, cmd.slot);
       player.list[cmd.slot] = drawn;
       state.done.push(replaced);
       state.drawnCard = null;
       // Replaced-card discards NEVER trigger actions (§4: "Actions trigger ONLY on
       // cards drawn from the deck" — i.e. the drawn card itself, discarded).
-      events.push({ type: 'kept', player: player.id, slot: cmd.slot, discarded: replaced });
+      events.push({ type: 'kept', player: player.id, slot: cmd.slot, visualSlot, discarded: replaced });
       endTurn(state, events);
       return { ok: true, state, events };
     }
@@ -221,9 +223,10 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
       // §4B: must swap it in; taking never triggers an action.
       const taken = state.done.pop()!;
       const replaced = player.list[cmd.slot]!;
+      const visualSlot = visualSlotAt(player, cmd.slot);
       player.list[cmd.slot] = taken;
       state.done.push(replaced);
-      events.push({ type: 'tookFromDone', player: player.id, slot: cmd.slot, taken, discarded: replaced });
+      events.push({ type: 'tookFromDone', player: player.id, slot: cmd.slot, visualSlot, taken, discarded: replaced });
       endTurn(state, events);
       return { ok: true, state, events };
     }
@@ -262,7 +265,7 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
       const receiver = state.players.find((p) => p.id === gift.to)!;
       const at = insertCardAtVisualSlot(receiver, gift.insertIndex, card);
       state.pendingGift = null;
-      events.push({ type: 'giftGiven', from: gift.from, to: gift.to, toSlot: at });
+      events.push({ type: 'giftGiven', from: gift.from, to: gift.to, toSlot: at, toVisualSlot: gift.insertIndex });
       return { ok: true, state, events };
     }
 
@@ -304,7 +307,7 @@ function handleActionInput(
       // §5: peek at ONE of your own cards.
       if (!isSlot(me.list, input.slot)) return fail('invalidSlot', 'no card in that slot');
       events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot: input.slot, card: me.list[input.slot]! }] });
-      events.push({ type: 'checkedTheList', player: playerId, slot: input.slot });
+      events.push({ type: 'checkedTheList', player: playerId, slot: input.slot, visualSlot: visualSlotAt(me, input.slot) });
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -313,7 +316,7 @@ function handleActionInput(
       // §5: peek at ONE of your own cards; you MAY then discard it (any value).
       if (!isSlot(me.list, input.slot)) return fail('invalidSlot', 'no card in that slot');
       events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot: input.slot, card: me.list[input.slot]! }] });
-      events.push({ type: 'knockItOutPeeked', player: playerId, slot: input.slot });
+      events.push({ type: 'knockItOutPeeked', player: playerId, slot: input.slot, visualSlot: visualSlotAt(me, input.slot) });
       pa.step = 'knockItOutDecision';
       pa.knockSlot = input.slot;
       return { ok: true, state, events }; // stays in 'action' until the decision
@@ -328,9 +331,19 @@ function handleActionInput(
         return fail('invalidSlot', 'both trade slots must hold a card');
       }
       const mine = me.list[input.mySlot]!;
+      const myVisualSlot = visualSlotAt(me, input.mySlot);
+      const opponentVisualSlot = visualSlotAt(opp, input.opponentSlot);
       me.list[input.mySlot] = opp.list[input.opponentSlot]!;
       opp.list[input.opponentSlot] = mine;
-      events.push({ type: 'traded', player: playerId, mySlot: input.mySlot, opponentId: opp.id, opponentSlot: input.opponentSlot });
+      events.push({
+        type: 'traded',
+        player: playerId,
+        mySlot: input.mySlot,
+        myVisualSlot,
+        opponentId: opp.id,
+        opponentSlot: input.opponentSlot,
+        opponentVisualSlot,
+      });
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -348,9 +361,20 @@ function handleActionInput(
         return fail('invalidSlot', 'both slots must hold a card');
       }
       const cardA = a.list[input.aSlot]!;
+      const aVisualSlot = visualSlotAt(a, input.aSlot);
+      const bVisualSlot = visualSlotAt(b, input.bSlot);
       a.list[input.aSlot] = b.list[input.bSlot]!;
       b.list[input.bSlot] = cardA;
-      events.push({ type: 'switcherood', player: playerId, a: a.id, aSlot: input.aSlot, b: b.id, bSlot: input.bSlot });
+      events.push({
+        type: 'switcherood',
+        player: playerId,
+        a: a.id,
+        aSlot: input.aSlot,
+        aVisualSlot,
+        b: b.id,
+        bSlot: input.bSlot,
+        bVisualSlot,
+      });
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -362,7 +386,7 @@ function handleActionInput(
       if (!target || target.id === playerId) return fail('invalidTarget', 'Snoop targets an opponent');
       if (!isSlot(target.list, input.slot)) return fail('invalidSlot', 'no card in that slot');
       events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: target.id, slot: input.slot, card: target.list[input.slot]! }] });
-      events.push({ type: 'snooped', player: playerId, targetId: target.id, slot: input.slot });
+      events.push({ type: 'snooped', player: playerId, targetId: target.id, slot: input.slot, visualSlot: visualSlotAt(target, input.slot) });
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -377,9 +401,18 @@ function handleActionInput(
       }
       if (callerLocked(from.id) || callerLocked(to.id)) return fail('callerLocked', "the caller's list is locked (§7)");
       if (!isSlot(from.list, input.fromSlot)) return fail('invalidSlot', 'no card in that slot');
-      const { card } = removeCard(from, input.fromSlot);
+      const { card, visualSlot: fromVisualSlot } = removeCard(from, input.fromSlot);
       const toSlot = appendCard(to, card);
-      events.push({ type: 'notMyJobbed', player: playerId, fromId: from.id, fromSlot: input.fromSlot, toId: to.id, toSlot });
+      events.push({
+        type: 'notMyJobbed',
+        player: playerId,
+        fromId: from.id,
+        fromSlot: input.fromSlot,
+        fromVisualSlot,
+        toId: to.id,
+        toSlot,
+        toVisualSlot: visualSlotAt(to, toSlot),
+      });
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -398,7 +431,7 @@ function handleActionInput(
         return fail('notPerformable', 'no card left to serve — cancel the action instead');
       }
       const slot = appendCard(target, state.deck.pop()!);
-      events.push({ type: 'landlordsNoticed', player: playerId, targetId: target.id, slot });
+      events.push({ type: 'landlordsNoticed', player: playerId, targetId: target.id, slot, visualSlot: visualSlotAt(target, slot) });
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -505,7 +538,7 @@ function handleForceSkip(
     const { card } = removeCard(player, 0);
     const receiver = state.players.find((p) => p.id === state.pendingGift!.to)!;
     const at = insertCardAtVisualSlot(receiver, state.pendingGift.insertIndex, card);
-    events.push({ type: 'giftGiven', from: playerId, to: receiver.id, toSlot: at });
+    events.push({ type: 'giftGiven', from: playerId, to: receiver.id, toSlot: at, toVisualSlot: state.pendingGift.insertIndex });
     state.pendingGift = null;
     return { ok: true, state, events };
   }
@@ -633,6 +666,10 @@ function current(state: RoundState) {
 
 function isSlot(list: Card[], slot: number): boolean {
   return Number.isInteger(slot) && slot >= 0 && slot < list.length;
+}
+
+function visualSlotAt(player: PlayerRoundState, slot: number): number {
+  return player.slotPositions[slot] ?? slot;
 }
 
 function removeCard(player: PlayerRoundState, slot: number): { card: Card; visualSlot: number } {

@@ -571,7 +571,7 @@ function OpponentRow({
           }
           const peeked = peeks.peekAt(playerId, slot.cardSlot);
           const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === slot.cardSlot;
-          const activityRole = activityRoleForSlot(activityVisual, playerId, slot.cardSlot);
+          const activityRole = activityRoleForSlot(activityVisual, playerId, slot.visualSlot);
           return (
             <button
               key={slot.visualSlot}
@@ -766,7 +766,7 @@ function MyRow({
           const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
           const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === slot.cardSlot;
           const slapPickable = !pickable && canSelectSlapTarget;
-          const activityRole = activityRoleForSlot(activityVisual, me.playerId, slot.cardSlot);
+          const activityRole = activityRoleForSlot(activityVisual, me.playerId, slot.visualSlot);
           return (
             <button
               key={slot.visualSlot}
@@ -889,9 +889,9 @@ function useJustChanged(value: string | null): boolean {
 function activityRoleForSlot(
   visual: ActivityVisual | undefined,
   player: PlayerId,
-  slot: number,
+  visualSlot: number,
 ): ActivityVisual['slots'][number]['role'] | undefined {
-  return visual?.slots.find((candidate) => candidate.player === player && candidate.slot === slot)?.role;
+  return visual?.slots.find((candidate) => candidate.player === player && candidate.slot === visualSlot)?.role;
 }
 
 /** The slot index I most recently placed a card into via keep/take-from-DONE,

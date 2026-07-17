@@ -41,6 +41,23 @@ describe('table activity spotlight', () => {
     });
   });
 
+  it('uses original visual slots when compact slots have shifted after gaps', () => {
+    const kept: EngineEvent = {
+      type: 'kept',
+      player: 'b',
+      slot: 2,
+      visualSlot: 5,
+      discarded: { id: 'public-1', name: 'Nap', effort: 0, kind: 'chore' },
+    };
+
+    const entry = latestSpotlightEntry(buildActivityLog([kept], nameOf));
+    assert.equal(entry?.text, 'Bob kept the drawn card (slot 6).');
+    assert.deepEqual(entry?.visual, {
+      kind: 'focus',
+      slots: [{ player: 'b', slot: 5, role: 'target' }],
+    });
+  });
+
   it('keeps an outcome eligible for the center spotlight when its start was missed', () => {
     const outcome: EngineEvent = { type: 'snooped', player: 'a', targetId: 'b', slot: 1 };
     const entry = latestSpotlightEntry(buildActivityLog([outcome], nameOf));
