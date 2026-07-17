@@ -9,7 +9,7 @@ import {
   type RoundState,
   type SessionState,
 } from '@lazy-sunday/engine';
-import type { LobbyState, RoomStatus, RoomToggles } from './protocol.js';
+import type { ActiveRoundRestartVote, LobbyState, RoomStatus, RoomToggles } from './protocol.js';
 
 /** Unambiguous room-code alphabet: no 0/O, no 1/I. */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -49,6 +49,10 @@ export interface Room {
   round: RoundState | null;
   /** 1-based round counter; 0 in the lobby. */
   roundNumber: number;
+  /** Unanimous room-level vote to redeal the current round. */
+  roundRestartVote: ActiveRoundRestartVote | null;
+  /** Monotonic id used to reject votes from an older proposal. */
+  nextRoundRestartVoteId: number;
   /** Per-blocking-player turn timers. */
   timers: Map<PlayerId, NodeJS.Timeout>;
   /** Delays the start of those timers while table activity is spotlighted. */
@@ -83,6 +87,8 @@ export function createRoom(deckCount = DEFAULT_DECK_COUNT): Room {
     session: null,
     round: null,
     roundNumber: 0,
+    roundRestartVote: null,
+    nextRoundRestartVoteId: 1,
     timers: new Map(),
     timerStartDelay: null,
     turnDeadlines: new Map(),

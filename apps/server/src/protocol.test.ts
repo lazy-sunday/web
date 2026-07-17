@@ -75,3 +75,27 @@ describe('table activity timer pause', () => {
     }
   });
 });
+
+describe('round restart vote protocol', () => {
+  it('accepts proposal and well-formed vote messages', () => {
+    assert.deepEqual(
+      parseClientMessage(JSON.stringify({ type: 'proposeRoundRestart' })),
+      { type: 'proposeRoundRestart' },
+    );
+    assert.deepEqual(
+      parseClientMessage(JSON.stringify({ type: 'voteRoundRestart', voteId: 3, approve: true })),
+      { type: 'voteRoundRestart', voteId: 3, approve: true },
+    );
+  });
+
+  it('rejects malformed and stale-looking vote ids at the wire boundary', () => {
+    const invalid = [
+      { type: 'voteRoundRestart', voteId: 0, approve: true },
+      { type: 'voteRoundRestart', voteId: 1.5, approve: true },
+      { type: 'voteRoundRestart', voteId: 1, approve: 'yes' },
+    ];
+    for (const message of invalid) {
+      assert.equal(parseClientMessage(JSON.stringify(message)), null);
+    }
+  });
+});

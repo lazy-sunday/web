@@ -80,6 +80,22 @@ export interface LobbyState {
   winners: PlayerId[];
 }
 
+/** Public coordination state for a unanimous restart vote. It contains only
+ *  seat ids and vote progress, never round state or card data. */
+export interface ActiveRoundRestartVote {
+  status: 'active';
+  voteId: number;
+  proposer: PlayerId;
+  eligibleVoters: PlayerId[];
+  yesVotes: PlayerId[];
+}
+
+export type RoundRestartVoteUpdate =
+  | ActiveRoundRestartVote
+  | { status: 'passed'; voteId: number }
+  | { status: 'rejected'; voteId: number; rejectedBy: PlayerId }
+  | { status: 'cancelled'; voteId: number; reason: 'rosterChanged' | 'roundEnded' };
+
 // ---------------------------------------------------------------------------
 // Client -> server
 // ---------------------------------------------------------------------------
@@ -99,6 +115,8 @@ export type ClientMessage =
   | { type: 'startGame' }
   | { type: 'command'; command: ClientCommand }
   | { type: 'nextRound' }
+  | { type: 'proposeRoundRestart' }
+  | { type: 'voteRoundRestart'; voteId: number; approve: boolean }
   | { type: 'reaction'; emoji: string }
   | { type: 'ping' };
 
@@ -134,6 +152,7 @@ export type ServerMessage =
   /** An engine event this player is allowed to see (eventVisibleTo-filtered). */
   | { type: 'event'; event: EngineEvent }
   | { type: 'sessionEvent'; event: SessionEvent }
+  | { type: 'roundRestartVote'; update: RoundRestartVoteUpdate }
   | { type: 'reaction'; player: PlayerId; emoji: string }
   | { type: 'error'; code: ServerErrorCode; message: string }
   | { type: 'pong' };
@@ -148,6 +167,8 @@ const CLIENT_TYPES = new Set([
   'startGame',
   'command',
   'nextRound',
+  'proposeRoundRestart',
+  'voteRoundRestart',
   'reaction',
   'ping',
 ]);
@@ -179,6 +200,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (typeof type !== 'string' || type === 'forceSkipTurn') return null;
       return m as unknown as ClientMessage;
     }
+    case 'voteRoundRestart':
+      if (!Number.isSafeInteger(m['voteId']) || (m['voteId'] as number) < 1 || typeof m['approve'] !== 'boolean') {
+        return null;
+      }
+      return m as unknown as ClientMessage;
     case 'reaction':
       if (typeof m['emoji'] !== 'string' || (m['emoji'] as string).length > 16) return null;
       return m as unknown as ClientMessage;

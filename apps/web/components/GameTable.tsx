@@ -2,10 +2,11 @@
 
 // The real card table (Milestone 3). Replaces TablePlaceholder.
 //
-// Layout: opponents' rows stacked above (small), my row pinned at the bottom
-// (large), deck + DONE pile centered between them. Everything face-down
-// renders from the card-back SVG; the only faces ever shown are the DONE
-// top (always public) and whatever `usePeeks`/`myDrawnCard` grants me.
+// Layout: the shared piles lead the compact table, your list becomes a sticky
+// tray, and opponents follow in stable seat order inside a responsive grid.
+// Everything face-down renders from the card-back SVG; the only faces ever
+// shown are the DONE top (always public) and whatever `usePeeks`/`myDrawnCard`
+// grants me.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardName, EngineEvent, PlayerId } from '@lazy-sunday/engine';
@@ -18,6 +19,7 @@ import { useCountdown } from '../lib/useCountdown';
 import { useSound } from '../lib/useSound';
 import { useGameSounds } from '../lib/useGameSounds';
 import { renderSlotsFor } from '../lib/slots';
+import { orderOpponentSeats } from '../lib/tableSeats';
 import { ActionModal } from './ActionModal';
 import { CardBack, CardFace } from './Card';
 import { FloatingReactions, ReactionBar } from './ReactionBar';
@@ -112,7 +114,7 @@ export function GameTable({ game }: { game: Game }) {
   const myId = me.playerId;
   const isMyTurn = view.currentPlayer === myId;
   const myPlayerView = view.players.find((p) => p.id === myId);
-  const opponents = view.players.filter((p) => p.id !== myId);
+  const opponentSeats = orderOpponentSeats(view.players, lobby.players, myId);
   const myListSize = myPlayerView?.listSize ?? 0;
   const canSelectSlapTarget = view.doneTop !== null && view.phase !== 'action' && view.pendingGift === null && pickMode === null;
   const canSelectOpponentSlapTarget = canSelectSlapTarget && myListSize > 0;
@@ -150,45 +152,28 @@ export function GameTable({ game }: { game: Game }) {
       />
       <HouseRuleBadges toggles={lobby.toggles} />
       <PlayerPresenceBar lobby={lobby} meId={myId} />
+      <RoundRestartVotePanel game={game} nameOf={nameOf} />
       <ActivityLog entries={activityEntries} />
 
       {view.phase === 'setupPeek' ? (
         <SetupPeekPanel game={game} peeks={peeks} inFlight={inFlight} sendGuarded={sendGuarded} />
       ) : (
         <div className="table-stage">
-          <div className="opponent-rows">
-            {opponents.map((p) => (
-              <OpponentRow
-                key={p.id}
-                playerId={p.id}
-                name={nameOf(p.id)}
-                color={colorOf(p.id)}
-                listSize={p.listSize}
-                slots={renderSlotsFor(p)}
-                isCurrent={view.currentPlayer === p.id}
-                isCaller={view.caller === p.id}
-                peeks={peeks}
-                canSelectSlapTarget={canSelectOpponentSlapTarget}
-                selectedSlapTarget={selectedSlapTarget}
-                activityVisual={spotlight?.visual}
-                onSelectSlapTarget={onSelectSlapTarget}
-              />
-            ))}
+          <div className="table-center-zone" id="shared-piles">
+            <ActionAnnouncement entry={spotlight} />
+
+            <CenterPiles
+              game={game}
+              myListSize={myPlayerView?.listSize ?? 0}
+              inFlight={inFlight}
+              sendGuarded={sendGuarded}
+              isMyTurn={isMyTurn}
+              pickMode={pickMode}
+              onStartKeepPick={() => setPickMode('keep')}
+              onStartTakeFromDone={() => setPickMode('takeFromDone')}
+              onCancelPick={() => setPickMode(null)}
+            />
           </div>
-
-          <ActionAnnouncement entry={spotlight} />
-
-          <CenterPiles
-            game={game}
-            myListSize={myPlayerView?.listSize ?? 0}
-            inFlight={inFlight}
-            sendGuarded={sendGuarded}
-            isMyTurn={isMyTurn}
-            pickMode={pickMode}
-            onStartKeepPick={() => setPickMode('keep')}
-            onStartTakeFromDone={() => setPickMode('takeFromDone')}
-            onCancelPick={() => setPickMode(null)}
-          />
 
           <MyRow
             game={game}
@@ -205,6 +190,34 @@ export function GameTable({ game }: { game: Game }) {
             activityVisual={spotlight?.visual}
             onSelectSlapTarget={onSelectSlapTarget}
           />
+
+          <section className="opponent-zone" aria-labelledby="opponents-heading">
+            <div className="opponent-zone-header">
+              <h2 id="opponents-heading">Around the table</h2>
+              <span>{opponentSeats.length} other player{opponentSeats.length === 1 ? '' : 's'}</span>
+            </div>
+            <div className="opponent-rows" data-opponent-count={opponentSeats.length}>
+              {opponentSeats.map(({ player: p, seat, connected }) => (
+                <OpponentRow
+                  key={p.id}
+                  playerId={p.id}
+                  seat={seat}
+                  connected={connected}
+                  name={nameOf(p.id)}
+                  color={colorOf(p.id)}
+                  listSize={p.listSize}
+                  slots={renderSlotsFor(p)}
+                  isCurrent={view.currentPlayer === p.id}
+                  isCaller={view.caller === p.id}
+                  peeks={peeks}
+                  canSelectSlapTarget={canSelectOpponentSlapTarget}
+                  selectedSlapTarget={selectedSlapTarget}
+                  activityVisual={spotlight?.visual}
+                  onSelectSlapTarget={onSelectSlapTarget}
+                />
+              ))}
+            </div>
+          </section>
 
           <SlapLayer
             game={game}
@@ -223,6 +236,97 @@ export function GameTable({ game }: { game: Game }) {
         <ReactionBar onSend={game.sendReaction} />
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Restart vote: room coordination only. The live round keeps moving unless
+// every eligible connected player agrees to replace it with a fresh deal.
+
+function RoundRestartVotePanel({
+  game,
+  nameOf,
+}: {
+  game: Game;
+  nameOf: (id: PlayerId | null) => string;
+}) {
+  const { me, roundRestartVote: vote, roundNumber } = game;
+  if (!me) return null;
+
+  if (!vote) {
+    return (
+      <div className="round-restart-trigger">
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => game.send({ type: 'proposeRoundRestart' })}
+        >
+          Vote to restart round
+        </button>
+      </div>
+    );
+  }
+
+  if (vote.status === 'passed') {
+    return <p className="round-restart-result" role="status">Vote passed. Dealing round {roundNumber} again.</p>;
+  }
+  if (vote.status === 'rejected') {
+    return (
+      <div className="round-restart-result" role="status">
+        <span>{nameOf(vote.rejectedBy)} voted no. The round continues.</span>
+        <button type="button" className="btn btn-ghost" onClick={() => game.send({ type: 'proposeRoundRestart' })}>
+          Try another vote
+        </button>
+      </div>
+    );
+  }
+  if (vote.status === 'cancelled') {
+    return (
+      <div className="round-restart-result" role="status">
+        <span>
+          {vote.reason === 'rosterChanged'
+            ? 'The vote was cancelled because a player connected or disconnected.'
+            : 'The vote was cancelled because the round ended.'}
+        </span>
+        <button type="button" className="btn btn-ghost" onClick={() => game.send({ type: 'proposeRoundRestart' })}>
+          Start a new vote
+        </button>
+      </div>
+    );
+  }
+
+  const eligible = vote.eligibleVoters.includes(me.playerId);
+  const votedYes = vote.yesVotes.includes(me.playerId);
+  return (
+    <section className="round-restart-vote" aria-labelledby={`round-restart-title-${vote.voteId}`}>
+      <div>
+        <h2 id={`round-restart-title-${vote.voteId}`}>{nameOf(vote.proposer)} wants a fresh deal</h2>
+        <p>Restart round {roundNumber} for everyone? Scores stay the same.</p>
+        <p className="round-restart-progress" role="status" aria-live="polite">
+          {vote.yesVotes.length} of {vote.eligibleVoters.length} voted yes
+        </p>
+      </div>
+      {eligible && !votedYes ? (
+        <div className="round-restart-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => game.send({ type: 'voteRoundRestart', voteId: vote.voteId, approve: true })}
+          >
+            Yes, restart
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => game.send({ type: 'voteRoundRestart', voteId: vote.voteId, approve: false })}
+          >
+            No, keep playing
+          </button>
+        </div>
+      ) : (
+        <p className="round-restart-recorded">{votedYes ? 'Your yes vote is in.' : 'You are not part of this vote.'}</p>
+      )}
+    </section>
   );
 }
 
@@ -403,6 +507,8 @@ function SetupPeekPanel({
 
 function OpponentRow({
   playerId,
+  seat,
+  connected,
   name,
   color,
   listSize,
@@ -416,6 +522,8 @@ function OpponentRow({
   onSelectSlapTarget,
 }: {
   playerId: PlayerId;
+  seat: number;
+  connected: boolean;
   name: string;
   color: string;
   listSize: number;
@@ -428,14 +536,33 @@ function OpponentRow({
   activityVisual: ActivityVisual | undefined;
   onSelectSlapTarget: (owner: PlayerId, slot: number) => void;
 }) {
+  const headingId = `opponent-seat-${playerId}`;
+
   return (
-    <div className="opponent-row" data-current={isCurrent}>
+    <section
+      className="opponent-row"
+      data-current={isCurrent}
+      data-connected={connected}
+      aria-labelledby={headingId}
+    >
       <div className="opponent-meta">
-        <span className="avatar-dot" style={{ background: color }} aria-hidden />
-        <span className="opponent-name">{name}</span>
-        {isCaller && <span className="caller-badge">NOT ME!</span>}
-        {isCurrent && <span className="turn-indicator" aria-label={`${name}'s turn`} />}
-        <span className="card-count">{listSize}</span>
+        <div className="opponent-identity">
+          <span className="avatar-dot" style={{ background: color }} aria-hidden />
+          <span
+            className="conn-dot"
+            data-connected={connected}
+            role="img"
+            aria-label={connected ? `${name} is connected` : `${name} is disconnected`}
+          />
+          <h3 className="opponent-name" id={headingId}>{name}</h3>
+        </div>
+        <span className="card-count" aria-label={`${listSize} cards`}>{listSize} cards</span>
+        <div className="opponent-status">
+          <span className="opponent-seat-number">Seat {seat + 1}</span>
+          <span className="opponent-presence-label">{connected ? 'Online' : 'Offline'}</span>
+          {isCaller && <span className="caller-badge">NOT ME!</span>}
+          {isCurrent && <span className="turn-indicator" aria-label={`${name}'s turn`}>TURN</span>}
+        </div>
       </div>
       <div className="opponent-cards" role="group" aria-label={`${name}'s chore list`}>
         {slots.map((slot) => {
@@ -467,7 +594,7 @@ function OpponentRow({
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
 

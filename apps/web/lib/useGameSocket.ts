@@ -13,6 +13,7 @@ import type {
   ClientCommand,
   ClientMessage,
   LobbyState,
+  RoundRestartVoteUpdate,
   ServerMessage,
 } from '@lazy-sunday/server/protocol';
 import { WS_URL } from './config';
@@ -62,6 +63,8 @@ export interface GameSocket {
   reactions: ReactionEvent[];
   /** Current turn/peek/action auto-skip clock (local deadline + who it's for). */
   turnTimer: TurnTimer;
+  /** Current restart proposal or the latest short-lived result. */
+  roundRestartVote: RoundRestartVoteUpdate | null;
   lastError: { code: string; message: string } | null;
   /** Join fresh with a chosen name + color (also persists identity for rejoin). */
   join: (name: string, color: string) => void;
@@ -111,6 +114,7 @@ export function useGameSocket(roomCode: string): GameSocket {
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
   const [reactions, setReactions] = useState<ReactionEvent[]>([]);
   const [turnTimer, setTurnTimer] = useState<TurnTimer>({ deadline: null, players: [] });
+  const [roundRestartVote, setRoundRestartVote] = useState<RoundRestartVoteUpdate | null>(null);
   const [lastError, setLastError] = useState<{ code: string; message: string } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -175,6 +179,9 @@ export function useGameSocket(roomCode: string): GameSocket {
             saveIdentity(roomCode, identity);
             setMe(identity);
             setLastError(null);
+            // The server cancels an open vote on any reconnect. Clear a vote
+            // this socket may have retained while it was offline.
+            setRoundRestartVote(null);
             break;
           }
           case 'lobby':
@@ -205,6 +212,14 @@ export function useGameSocket(roomCode: string): GameSocket {
               const next = [...prev, msg.event];
               return next.length > MAX_SESSION_EVENTS ? next.slice(next.length - MAX_SESSION_EVENTS) : next;
             });
+            break;
+          case 'roundRestartVote':
+            setRoundRestartVote(msg.update);
+            if (msg.update.status === 'passed') {
+              // Peek memory and table activity belong to the discarded deal.
+              setEvents([]);
+              setTurnTimer({ deadline: null, players: [] });
+            }
             break;
           case 'reaction':
             setReactions((prev) => {
@@ -266,6 +281,12 @@ export function useGameSocket(roomCode: string): GameSocket {
 
   const clearError = useCallback(() => setLastError(null), []);
 
+  useEffect(() => {
+    if (!roundRestartVote || roundRestartVote.status === 'active') return;
+    const timer = setTimeout(() => setRoundRestartVote(null), 5_000);
+    return () => clearTimeout(timer);
+  }, [roundRestartVote]);
+
   const latestSessionEvent = sessionEvents.length > 0 ? sessionEvents[sessionEvents.length - 1]! : null;
 
   return {
@@ -279,6 +300,7 @@ export function useGameSocket(roomCode: string): GameSocket {
     latestSessionEvent,
     reactions,
     turnTimer,
+    roundRestartVote,
     lastError,
     join,
     send: rawSend,
