@@ -26,6 +26,25 @@ describe('taking a turn (§4)', () => {
     expect(r.state.phase).toBe('turn');
   });
 
+  it('A: draw and keep reports the visual table slot when gaps compact the list', () => {
+    const s = makeRound({
+      players: [
+        { id: 'a', list: ['Nap', 'Vacuum the Living Room', 'Feed the Cat'] },
+        { id: 'b', list: ['Water the Plants'] },
+      ],
+      deck: ['Fold the Laundry'],
+    });
+    const drawn = ok(applyCommand(s, { type: 'draw', player: 'a' })).state;
+    player(drawn, 'a').slotPositions = [1, 3, 5];
+
+    const r = ok(applyCommand(drawn, { type: 'keepDrawn', player: 'a', slot: 2 }));
+
+    const kept = evt(r.events, 'kept');
+    expect(kept.slot).toBe(2);
+    expect(kept.visualSlot).toBe(5);
+    expect(player(r.state, 'a').slotPositions).toEqual([1, 3, 5]);
+  });
+
   it('A: draw and discard a chore — straight to DONE, no action possible', () => {
     const s = makeRound({
       players: [{ id: 'a', list: ['Nap'] }, { id: 'b', list: ['Nap'] }],
