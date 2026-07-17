@@ -1132,6 +1132,78 @@ select {
   white-space: nowrap;
 }
 
+.round-restart-trigger {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.round-restart-trigger .btn {
+  min-height: 44px;
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.round-restart-vote,
+.round-restart-result {
+  border: 1px solid rgba(49, 64, 122, 0.45);
+  border-radius: var(--radius);
+  background: var(--day-cream);
+  color: var(--ink);
+}
+
+.round-restart-vote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+}
+
+.round-restart-vote h2 {
+  margin: 0 0 3px;
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+
+.round-restart-vote p,
+.round-restart-result {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.round-restart-vote p {
+  margin: 0;
+}
+
+.round-restart-progress,
+.round-restart-recorded {
+  margin-top: 4px !important;
+  font-weight: 700;
+  color: var(--night-panel);
+}
+
+.round-restart-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.round-restart-actions .btn,
+.round-restart-result .btn {
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.round-restart-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 14px;
+}
+
 .opponent-cards {
   display: flex;
   gap: 6px;
@@ -2604,6 +2676,18 @@ select {
     flex-direction: column;
     align-items: stretch;
     width: min(100%, 280px);
+  }
+
+  .round-restart-vote,
+  .round-restart-result,
+  .round-restart-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .round-restart-actions .btn,
+  .round-restart-result .btn {
+    width: 100%;
   }
 
   .decision-card-face {
