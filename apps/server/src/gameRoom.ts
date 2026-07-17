@@ -17,6 +17,7 @@ import {
   createRound,
   createSession,
   isValidDeckCount,
+  SETUP_PEEK_MS,
   eventVisibleTo,
   viewFor,
   type Command,
@@ -171,13 +172,7 @@ function handleJoin(conn: Conn, msg: Extract<ClientMessage, { type: 'join' }>): 
       if (room.round) {
         send(conn.socket, { type: 'view', view: viewFor(room.round, existing.id), roundNumber: room.roundNumber });
         // Give the rejoiner the TRUE remaining time, not a fresh full countdown.
-        const remainingMs =
-          room.turnDeadline === null ? null : Math.max(0, room.turnDeadline - Date.now());
-        send(conn.socket, {
-          type: 'turnTimer',
-          remainingMs,
-          players: room.status === 'playing' && room.round ? blockingPlayers(room.round) : [],
-        });
+        send(conn.socket, timerMessageFor(room, existing.id));
       }
       return;
     }
@@ -257,7 +252,9 @@ function handleSetToggle(room: Room, player: RoomPlayer, msg: Extract<ClientMess
       return;
     }
     room.toggles.turnTimeoutSeconds = Math.min(300, Math.max(10, Math.round(msg.value)));
-    resetTimers(room); // apply the new timeout immediately
+    // Never rewrite independent setup deadlines. A changed setting takes effect
+    // when normal play begins; during normal play it still applies immediately.
+    if (room.round?.phase !== 'setupPeek') resetTimers(room);
   } else {
     sendTo(player, { type: 'error', code: 'badToggle', message: 'unknown toggle' });
     return;
@@ -450,11 +447,11 @@ function handleCommand(room: Room, player: RoomPlayer, clientCmd: Record<string,
 
   const applied = applyToRoom(room, cmd, player);
 
-  // A rejected command from a player the round is blocked on restarts their
-  // timer — they are demonstrably at the keyboard. Successful commands already
-  // reset (or briefly pause) the timer inside applyToRoom.
+  // A rejected command from the current normal-play blocker restarts the turn
+  // timer — they are demonstrably at the keyboard. During setup, rejected taps
+  // leave every player's independent inactivity/peek deadline untouched.
   if (!applied && room.round && blockingPlayers(room.round).includes(player.id)) {
-    resetTimers(room);
+    if (room.round.phase !== 'setupPeek') resetTimers(room);
   }
 }
 
@@ -462,6 +459,11 @@ function handleCommand(room: Room, player: RoomPlayer, clientCmd: Record<string,
  *  Fully synchronous — never interleave async work in here. */
 function applyToRoom(room: Room, cmd: Command, feedbackTo: RoomPlayer | null): boolean {
   if (!room.round) return false;
+  const wasSetupPeek = room.round.phase === 'setupPeek';
+  const setupPlayerBefore = wasSetupPeek
+    ? room.round.players.find((player) => player.id === cmd.player)
+    : undefined;
+  const setupSlotCountBefore = setupPlayerBefore?.setupPeekSlots.length ?? null;
   const result = applyCommand(room.round, cmd);
   if (!result.ok) {
     if (feedbackTo) sendTo(feedbackTo, { type: 'error', code: result.code, message: result.message });
@@ -490,7 +492,22 @@ function applyToRoom(room: Room, cmd: Command, feedbackTo: RoomPlayer | null): b
 
   broadcastViews(room);
   if (revealed) broadcastLobby(room); // standings changed
-  resetTimers(room, hasTableActivitySpotlight(result.events) ? TABLE_ACTIVITY_SPOTLIGHT_MS : 0);
+
+  if (wasSetupPeek && cmd.type === 'setupPeek') {
+    // The first successful card tap starts this player's fixed reveal window.
+    // A second tap shares that deadline, and no setup tap touches anyone else's.
+    if (setupSlotCountBefore === 0) restartPlayerTimer(room, cmd.player, SETUP_PEEK_MS);
+  } else if (wasSetupPeek && cmd.type === 'forceSkipTurn') {
+    removePlayerTimer(room, cmd.player);
+    if (room.round.phase === 'setupPeek') {
+      broadcastTimerState(room);
+    } else {
+      // The last setup window ended: only now start the first normal turn timer.
+      resetTimers(room);
+    }
+  } else {
+    resetTimers(room, hasTableActivitySpotlight(result.events) ? TABLE_ACTIVITY_SPOTLIGHT_MS : 0);
+  }
   return true;
 }
 
@@ -514,26 +531,26 @@ export function blockingPlayers(state: RoundState): PlayerId[] {
 function clearTimers(room: Room): void {
   for (const t of room.timers.values()) clearTimeout(t);
   room.timers.clear();
+  room.turnDeadlines.clear();
   if (room.timerStartDelay) clearTimeout(room.timerStartDelay);
   room.timerStartDelay = null;
-  room.turnDeadline = null;
 }
 
 function resetTimers(room: Room, startDelayMs = 0): void {
   clearTimers(room);
   if (room.status !== 'playing' || !room.round) {
-    broadcast(room, { type: 'turnTimer', remainingMs: null, players: [] });
+    broadcastTimerState(room);
     return;
   }
   const blocking = blockingPlayers(room.round);
   if (blocking.length === 0) {
-    broadcast(room, { type: 'turnTimer', remainingMs: null, players: [] });
+    broadcastTimerState(room);
     return;
   }
 
   if (startDelayMs > 0) {
     const expectedRound = room.round;
-    broadcast(room, { type: 'turnTimer', remainingMs: null, players: blocking });
+    broadcastTimerState(room);
     const delay = setTimeout(() => {
       if (room.timerStartDelay !== delay) return;
       room.timerStartDelay = null;
@@ -552,19 +569,15 @@ function resetTimers(room: Room, startDelayMs = 0): void {
 
 function startTimers(room: Room, blocking: readonly PlayerId[]): void {
   const timeoutMs = room.toggles.turnTimeoutSeconds * 1000;
+  const now = Date.now();
+  const deadline = now + timeoutMs;
   for (const pid of blocking) {
     const t = setTimeout(() => onTurnTimeout(room, pid), timeoutMs);
     t.unref();
     room.timers.set(pid, t);
+    room.turnDeadlines.set(pid, deadline);
   }
-  room.turnDeadline = blocking.length > 0 ? Date.now() + timeoutMs : null;
-  // A duration, not an absolute time — the client turns it into its own local
-  // deadline, so mismatched server/client clocks don't skew the countdown.
-  broadcast(room, {
-    type: 'turnTimer',
-    remainingMs: room.turnDeadline === null ? null : timeoutMs,
-    players: [...blocking],
-  });
+  broadcastTimerState(room, now);
 }
 
 function samePlayers(a: readonly PlayerId[], b: readonly PlayerId[]): boolean {
@@ -572,13 +585,54 @@ function samePlayers(a: readonly PlayerId[], b: readonly PlayerId[]): boolean {
 }
 
 function onTurnTimeout(room: Room, pid: PlayerId): void {
-  room.timers.delete(pid);
+  removePlayerTimer(room, pid);
   if (room.status !== 'playing' || !room.round) return;
   if (!blockingPlayers(room.round).includes(pid)) return; // stale timer
   // Engine resolves whatever they were blocking on: forfeits the setup peek,
   // discards a held drawn card, cancels a pending action, gives the lowest-slot
   // gift card, or skips the turn outright.
   applyToRoom(room, { type: 'forceSkipTurn', player: pid }, null);
+}
+
+function restartPlayerTimer(room: Room, pid: PlayerId, timeoutMs: number): void {
+  removePlayerTimer(room, pid);
+  const now = Date.now();
+  const timer = setTimeout(() => onTurnTimeout(room, pid), timeoutMs);
+  timer.unref();
+  room.timers.set(pid, timer);
+  room.turnDeadlines.set(pid, now + timeoutMs);
+  broadcastTimerState(room, now);
+}
+
+function removePlayerTimer(room: Room, pid: PlayerId): void {
+  const timer = room.timers.get(pid);
+  if (timer) clearTimeout(timer);
+  room.timers.delete(pid);
+  room.turnDeadlines.delete(pid);
+}
+
+/** Build the timer payload this recipient should see. Setup-peek countdowns are
+ *  private per-player; normal gameplay's one active deadline is public. */
+export function timerMessageFor(
+  room: Room,
+  recipient: PlayerId,
+  now = Date.now(),
+): Extract<ServerMessage, { type: 'turnTimer' }> {
+  const round = room.status === 'playing' ? room.round : null;
+  const players = round ? blockingPlayers(round) : [];
+  const timedPlayer = round?.phase === 'setupPeek' ? recipient : players[0];
+  const deadline = timedPlayer ? room.turnDeadlines.get(timedPlayer) : undefined;
+  return {
+    type: 'turnTimer',
+    remainingMs: deadline === undefined ? null : Math.max(0, deadline - now),
+    players,
+  };
+}
+
+function broadcastTimerState(room: Room, now = Date.now()): void {
+  for (const player of room.players) {
+    if (player.connected) sendTo(player, timerMessageFor(room, player.id, now));
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -1325,6 +1325,24 @@ select {
   font-size: 15px;
 }
 
+.setup-peek-timer {
+  align-self: center;
+  min-width: 132px;
+  padding: 6px 12px;
+  border: 1px solid rgba(143, 162, 220, 0.45);
+  border-radius: 999px;
+  color: var(--night-panel);
+  background: rgba(143, 162, 220, 0.18);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.setup-peek-panel[data-window-ended='false'] .slot-btn:disabled[data-peek-selected='false'],
+.setup-peek-panel[data-window-ended='true'] .slot-btn {
+  opacity: 0.5;
+}
+
 .waiting-line {
   text-align: center;
   font-weight: 700;
@@ -1387,7 +1405,7 @@ select {
   background: none;
   padding: 0;
   border-radius: 10px;
-  transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, opacity 150ms ease-out;
   cursor: pointer;
   scroll-snap-align: start;
 }

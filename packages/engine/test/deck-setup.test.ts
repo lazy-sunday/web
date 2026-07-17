@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildDeck, CARD_SPECS, MAX_DECK_COUNT, MIN_DECK_COUNT } from '../src/cards.js';
+import { SETUP_PEEK_MS } from '../src/index.js';
 import { createRound, applyCommand } from '../src/round.js';
 import { viewFor } from '../src/view.js';
 import { err, evt, evts, ok } from './helpers.js';
@@ -67,7 +68,10 @@ describe('deck composition (§2)', () => {
 describe('createRound / dealing (§3)', () => {
   it('deals 6 face-down cards each and flips one to start DONE', () => {
     const s = createRound({ players: ['a', 'b', 'c'], startingPlayer: 0, seed: 7 });
-    for (const p of s.players) expect(p.list).toHaveLength(6);
+    for (const p of s.players) {
+      expect(p.list).toHaveLength(6);
+      expect(p.setupPeekSlots).toEqual([]);
+    }
     expect(s.done).toHaveLength(1);
     expect(s.deck).toHaveLength(54 - 18 - 1);
     expect(s.phase).toBe('setupPeek');
@@ -103,45 +107,60 @@ describe('createRound / dealing (§3)', () => {
 describe('setup peek (§3.3)', () => {
   const fresh = () => createRound({ players: ['a', 'b'], startingPlayer: 1, seed: 5 });
 
-  it('reveals exactly the two chosen cards, privately, once', () => {
+  it('exports the setup peek duration for timer coordination', () => {
+    expect(SETUP_PEEK_MS).toBe(10_000);
+  });
+
+  it('reveals and records one chosen card per command without ending the window', () => {
     const s = fresh();
-    const r = ok(applyCommand(s, { type: 'setupPeek', player: 'a', slots: [0, 3] }));
-    const peek = evt(r.events, 'peek');
-    expect(peek.to).toBe('a');
-    // §3.3 setup peek carries its own reason so the client can time the long
-    // 10s reveal from the event, not from a view phase that may already have
-    // advanced to `turn` for the last player to confirm (issue #28).
-    expect(peek.reason).toBe('setup');
-    expect(peek.reveals.map((x) => x.slot)).toEqual([0, 3]);
-    expect(peek.reveals[0]!.card).toEqual(s.players[0]!.list[0]);
-    // once, and never again
-    expect(err(applyCommand(r.state, { type: 'setupPeek', player: 'a', slots: [1, 2] })).code)
+    const first = ok(applyCommand(s, { type: 'setupPeek', player: 'a', slot: 0 }));
+    const firstPeek = evt(first.events, 'peek');
+    expect(firstPeek).toMatchObject({ to: 'a', reason: 'setup' });
+    expect(firstPeek.reveals.map((x) => x.slot)).toEqual([0]);
+    expect(firstPeek.reveals[0]!.card).toEqual(s.players[0]!.list[0]);
+    expect(first.state.players[0]!.setupPeekSlots).toEqual([0]);
+    expect(first.state.players[0]!.setupPeeked).toBe(false);
+    expect(first.state.phase).toBe('setupPeek');
+    expect(evts(first.events, 'setupPeeked')).toHaveLength(0);
+    expect(s.players[0]!.setupPeekSlots).toEqual([]);
+
+    const second = ok(applyCommand(first.state, { type: 'setupPeek', player: 'a', slot: 3 }));
+    expect(evt(second.events, 'peek').reveals.map((x) => x.slot)).toEqual([3]);
+    expect(second.state.players[0]!.setupPeekSlots).toEqual([0, 3]);
+    expect(second.state.players[0]!.setupPeeked).toBe(false);
+    expect(second.state.phase).toBe('setupPeek');
+  });
+
+  it('rejects an invalid slot, a duplicate selection, and a third selection', () => {
+    expect(err(applyCommand(fresh(), { type: 'setupPeek', player: 'a', slot: 6 })).code)
+      .toBe('invalidSlot');
+
+    const first = ok(applyCommand(fresh(), { type: 'setupPeek', player: 'a', slot: 2 }));
+    expect(err(applyCommand(first.state, { type: 'setupPeek', player: 'a', slot: 2 })).code)
+      .toBe('invalidSlot');
+
+    const second = ok(applyCommand(first.state, { type: 'setupPeek', player: 'a', slot: 4 }));
+    expect(err(applyCommand(second.state, { type: 'setupPeek', player: 'a', slot: 1 })).code)
       .toBe('alreadyPeeked');
   });
 
-  it('rejects peeking the same slot twice', () => {
-    expect(err(applyCommand(fresh(), { type: 'setupPeek', player: 'a', slots: [2, 2] })).code)
-      .toBe('invalidSlot');
-  });
+  it('starts the first turn only after every setup window has ended', () => {
+    const a1 = ok(applyCommand(fresh(), { type: 'setupPeek', player: 'a', slot: 0 }));
+    const a2 = ok(applyCommand(a1.state, { type: 'setupPeek', player: 'a', slot: 1 }));
+    const aDone = ok(applyCommand(a2.state, { type: 'forceSkipTurn', player: 'a' }));
+    expect(aDone.state.phase).toBe('setupPeek');
+    expect(evt(aDone.events, 'setupPeeked').player).toBe('a');
 
-  it('starts the first turn (with the configured starting player) once all have peeked', () => {
-    const r1 = ok(applyCommand(fresh(), { type: 'setupPeek', player: 'a', slots: [0, 1] }));
-    expect(r1.state.phase).toBe('setupPeek');
-    const r2 = ok(applyCommand(r1.state, { type: 'setupPeek', player: 'b', slots: [4, 5] }));
-    expect(r2.state.phase).toBe('turn');
-    expect(evt(r2.events, 'turnStarted').player).toBe('b'); // startingPlayer: 1
-  });
+    const b1 = ok(applyCommand(aDone.state, { type: 'setupPeek', player: 'b', slot: 4 }));
+    const b2 = ok(applyCommand(b1.state, { type: 'setupPeek', player: 'b', slot: 5 }));
+    expect(b2.state.phase).toBe('setupPeek');
+    expect(evts(b2.events, 'turnStarted')).toHaveLength(0);
+    expect(evt(b2.events, 'peek')).toMatchObject({ to: 'b', reason: 'setup' });
 
-  it('the LAST player to confirm still gets a setup-reason peek in the same batch that advances to `turn` (issue #28)', () => {
-    const r1 = ok(applyCommand(fresh(), { type: 'setupPeek', player: 'a', slots: [0, 1] }));
-    const r2 = ok(applyCommand(r1.state, { type: 'setupPeek', player: 'b', slots: [4, 5] }));
-    // This single command emits the peek AND flips the phase to `turn`. The peek
-    // must still be tagged `setup` so the client times the full 10s reveal — the
-    // phase is not a reliable signal here.
-    expect(r2.state.phase).toBe('turn');
-    const peek = evt(r2.events, 'peek');
-    expect(peek.to).toBe('b');
-    expect(peek.reason).toBe('setup');
+    const bDone = ok(applyCommand(b2.state, { type: 'forceSkipTurn', player: 'b' }));
+    expect(bDone.state.phase).toBe('turn');
+    expect(evt(bDone.events, 'setupPeeked').player).toBe('b');
+    expect(evt(bDone.events, 'turnStarted').player).toBe('b'); // startingPlayer: 1
   });
 
   it('no turn actions are allowed during setup peek', () => {
@@ -152,11 +171,13 @@ describe('setup peek (§3.3)', () => {
   it('a timed-out setup peek is forfeited via forceSkipTurn', () => {
     const r1 = ok(applyCommand(fresh(), { type: 'forceSkipTurn', player: 'a' }));
     expect(evts(r1.events, 'peek')).toHaveLength(0);
-    const r2 = ok(applyCommand(r1.state, { type: 'setupPeek', player: 'b', slots: [0, 1] }));
-    expect(r2.state.phase).toBe('turn');
     // the forfeit is permanent
-    expect(err(applyCommand(r2.state, { type: 'setupPeek', player: 'a', slots: [0, 1] })).code)
-      .toBe('wrongPhase');
+    expect(err(applyCommand(r1.state, { type: 'setupPeek', player: 'a', slot: 0 })).code)
+      .toBe('alreadyPeeked');
+
+    const b1 = ok(applyCommand(r1.state, { type: 'setupPeek', player: 'b', slot: 0 }));
+    const bDone = ok(applyCommand(b1.state, { type: 'forceSkipTurn', player: 'b' }));
+    expect(bDone.state.phase).toBe('turn');
   });
 });
 
@@ -181,12 +202,25 @@ describe('view redaction', () => {
     expect(view.myDrawnCard).toBeNull();
   });
 
+  it('exposes selected setup slots only to the player who selected them', () => {
+    const s = createRound({ players: ['a', 'b'], startingPlayer: 0, seed: 9 });
+    const aSelected = ok(applyCommand(s, { type: 'setupPeek', player: 'a', slot: 2 })).state;
+    const bothSelected = ok(applyCommand(aSelected, { type: 'setupPeek', player: 'b', slot: 4 })).state;
+
+    expect(viewFor(bothSelected, 'a').mySetupPeekSlots).toEqual([2]);
+    expect(viewFor(bothSelected, 'b').mySetupPeekSlots).toEqual([4]);
+    expect(viewFor(bothSelected, 'unknown').mySetupPeekSlots).toEqual([]);
+    expect(viewFor(bothSelected, 'a').players.every((p) => !('setupPeekSlots' in p))).toBe(true);
+  });
+
   it('shows the drawn card only to the player who drew it', () => {
     const s = createRound({ players: ['a', 'b'], startingPlayer: 0, seed: 9 });
-    const ready = ok(applyCommand(
-      ok(applyCommand(s, { type: 'setupPeek', player: 'a', slots: [0, 1] })).state,
-      { type: 'setupPeek', player: 'b', slots: [0, 1] },
-    )).state;
+    const a1 = ok(applyCommand(s, { type: 'setupPeek', player: 'a', slot: 0 })).state;
+    const a2 = ok(applyCommand(a1, { type: 'setupPeek', player: 'a', slot: 1 })).state;
+    const aDone = ok(applyCommand(a2, { type: 'forceSkipTurn', player: 'a' })).state;
+    const b1 = ok(applyCommand(aDone, { type: 'setupPeek', player: 'b', slot: 0 })).state;
+    const b2 = ok(applyCommand(b1, { type: 'setupPeek', player: 'b', slot: 1 })).state;
+    const ready = ok(applyCommand(b2, { type: 'forceSkipTurn', player: 'b' })).state;
     const drawn = ok(applyCommand(ready, { type: 'draw', player: 'a' })).state;
     expect(viewFor(drawn, 'a').myDrawnCard).toEqual(drawn.drawnCard);
     expect(viewFor(drawn, 'b').myDrawnCard).toBeNull();

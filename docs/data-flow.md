@@ -31,7 +31,9 @@ The client stores `{ playerId, token, name, color }` in `localStorage` per room 
 4. Server calls `createRound` with seat order, starting seat, seed, `deckCount`, and `instantNotMe`.
 5. Server broadcasts lobby state.
 6. Server sends each player their own `viewFor(round, playerId)`.
-7. Server starts setup-peek timers.
+7. Server starts an inactivity timer for each player's setup peek.
+8. A player's first valid card tap replaces only their own inactivity timer with the 10-second reveal window. A second tap shares that deadline.
+9. The server keeps the round in setup until every player's window ends or is forfeited, then starts the first turn and its timer.
 
 At this point the server has raw `RoundState`; clients only have redacted `RoundView`.
 

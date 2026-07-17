@@ -27,6 +27,9 @@ export interface PlayerRoundState {
   /** Set by "I'm Busy" (§5): "their next turn is skipped". Saturating, not stacking:
    *  a second "I'm Busy" before that turn re-skips the same, already-skipped next turn. */
   skipNextTurn: boolean;
+  /** Own slots selected during the setup peek. At most two, in selection order. */
+  setupPeekSlots: number[];
+  /** True once this player's setup-peek window has ended or been forfeited. */
   setupPeeked: boolean;
 }
 
@@ -102,7 +105,7 @@ export type ActionInput =
   | { action: "I'm Busy"; targetId: PlayerId };
 
 export type Command =
-  | { type: 'setupPeek'; player: PlayerId; slots: [number, number] }
+  | { type: 'setupPeek'; player: PlayerId; slot: number }
   | { type: 'draw'; player: PlayerId }
   | { type: 'keepDrawn'; player: PlayerId; slot: number }
   | { type: 'discardDrawn'; player: PlayerId; withAction: boolean }

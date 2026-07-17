@@ -12,31 +12,28 @@
 // to, so we don't need to re-check `to` here, but we do anyway as
 // belt-and-braces against future event plumbing changes.
 //
-// Issue #28: how long a peek shows is decided by the EVENT's own `reason`,
-// never by the client's current view phase. When the LAST player confirms
-// their setup peek, the engine advances the phase to `turn` in the SAME
-// applyCommand batch that emits the peek, so the fresh view (phase `turn`)
-// and the `peek` event arrive together. React can coalesce those into one
-// passive-effect flush, so reading the live phase here would misread the
-// once-only 10s setup reveal as a 4s granted peek. Reading `reason` off the
-// event removes that race. The stable event sequence below also prevents the
-// capped socket log from dropping every peek after its retained window fills.
+// Each event carries its own `reason`, so setup reveals and shorter in-game
+// reveals never depend on the current view phase. Setup now arrives as one
+// private event per tapped card; both events share the deadline created by the
+// first tap. The stable event sequence below also prevents the capped socket
+// log from dropping every peek after its retained window fills.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Card, EngineEvent, PeekReason, PlayerId } from '@lazy-sunday/engine';
+import { SETUP_PEEK_MS, type Card, type EngineEvent, type PeekReason, type PlayerId } from '@lazy-sunday/engine';
 import { eventsAfter } from './eventLog';
 import type { GameEvent } from './useGameSocket';
 
 export interface ActivePeek {
   card: Card;
+  reason: PeekReason;
   /** ms remaining is derived by the caller from `expiresAt`; we just hold the deadline. */
   expiresAt: number;
 }
 
 type PeekEvent = Extract<EngineEvent, { type: 'peek' }>;
 
-/** Setup peek (§3.3) gets the long 10s display; granted peeks (§5) get 4s. */
-export const SETUP_PEEK_MS = 10_000;
+/** Setup peek (§3.3) gets the engine's shared 10s display; granted peeks (§5) get 4s. */
+export { SETUP_PEEK_MS };
 export const GRANTED_PEEK_MS = 4_000;
 
 /** How long a peek's faces stay visible, decided by the peek's origin — NOT by
@@ -49,6 +46,22 @@ function keyFor(owner: PlayerId, slot: number): string {
   return `${owner}:${slot}`;
 }
 
+/** A setup peek is sent as one event per tapped card. Every card in that
+ *  once-only setup window must use the first event's deadline, rather than
+ *  granting another 10 seconds for the second tap. Action peeks remain
+ *  independent and always receive a fresh four-second deadline. */
+export function deadlineForPeek(
+  prev: ReadonlyMap<string, ActivePeek>,
+  ev: PeekEvent,
+  now: number,
+): number {
+  if (ev.reason === 'action') return now + GRANTED_PEEK_MS;
+  for (const active of prev.values()) {
+    if (active.reason === 'setup' && active.expiresAt > now) return active.expiresAt;
+  }
+  return now + SETUP_PEEK_MS;
+}
+
 /** Pure reducer: fold one peek event into the active-peek map, stamping each
  *  revealed slot with an absolute expiry (`now + ttl`). Deadline-based so it is
  *  independent of any timer — the hook only needs to schedule the eventual
@@ -57,11 +70,11 @@ export function reducePeek(
   prev: ReadonlyMap<string, ActivePeek>,
   ev: PeekEvent,
   now: number,
+  expiresAt = deadlineForPeek(prev, ev, now),
 ): Map<string, ActivePeek> {
-  const ttl = peekTtlMs(ev.reason);
   const next = new Map(prev);
   for (const reveal of ev.reveals) {
-    next.set(keyFor(reveal.owner, reveal.slot), { card: reveal.card, expiresAt: now + ttl });
+    next.set(keyFor(reveal.owner, reveal.slot), { card: reveal.card, reason: ev.reason, expiresAt });
   }
   return next;
 }
@@ -70,6 +83,10 @@ export function usePeeks(events: GameEvent[], myId: PlayerId | null) {
   const [peeks, setPeeks] = useState<Map<string, ActivePeek>>(new Map());
   const lastSeenSequence = useRef(0);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Ephemeral only: this groups the two setup events received by this mounted
+  // client. It is cleared at expiry and is deliberately not restored after a
+  // reconnect. Hidden card knowledge remains in memory only.
+  const setupDeadline = useRef<number | null>(null);
 
   useEffect(() => {
     if (!myId) return;
@@ -83,10 +100,15 @@ export function usePeeks(events: GameEvent[], myId: PlayerId | null) {
     for (const { event: ev } of newEvents) {
       if (ev.type !== 'peek') continue;
       if (ev.to !== myId) continue;
-      const ttl = peekTtlMs(ev.reason);
       const now = Date.now();
-      const deadline = now + ttl;
-      setPeeks((prev) => reducePeek(prev, ev, now));
+      const deadline =
+        ev.reason === 'setup'
+          ? setupDeadline.current && setupDeadline.current > now
+            ? setupDeadline.current
+            : now + SETUP_PEEK_MS
+          : now + GRANTED_PEEK_MS;
+      if (ev.reason === 'setup') setupDeadline.current = deadline;
+      setPeeks((prev) => reducePeek(prev, ev, now, deadline));
       for (const reveal of ev.reveals) {
         const key = keyFor(reveal.owner, reveal.slot);
         const existing = timers.current.get(key);
@@ -101,8 +123,11 @@ export function usePeeks(events: GameEvent[], myId: PlayerId | null) {
             next.delete(key);
             return next;
           });
+          if (ev.reason === 'setup' && setupDeadline.current === deadline) {
+            setupDeadline.current = null;
+          }
           if (timers.current.get(key) === t) timers.current.delete(key);
-        }, ttl);
+        }, Math.max(0, deadline - Date.now()));
         timers.current.set(key, t);
       }
     }

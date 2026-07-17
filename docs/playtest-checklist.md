@@ -45,17 +45,25 @@ invariants.
 
 ## 1. Setup peek (§3.3)
 
-5. Each of Alice, Bob, Carol privately picks any 2 of their own 6 cards to
-   peek.
-   - **Verify:** each player sees ONLY their own 2 revealed cards, privately.
-     No one else's screen shows anything. Confirm out loud that nobody else
-     can see your screen.
-6. Each tries to peek a second time.
-   - **Verify:** the client refuses / server would reject with
-     `alreadyPeeked` — "once, and never again" (§3.3).
-7. Once all three have peeked, the round moves to `turn` phase starting with
-   Alice (round 1 starts at seat 0).
-   - **Verify:** the UI clearly shows whose turn it is.
+5. Alice taps one of her 6 cards, then taps a second, different card before the
+   countdown ends.
+   - **Verify:** that card opens immediately in place and the 10-second peek
+     countdown begins. There is no selection confirmation button.
+   - **Verify:** the second card opens immediately and both cards close at the
+     original deadline. Tapping either card again or trying a third card does
+     not reveal anything else.
+6. Repeat for Bob and Carol while comparing all three screens. Let Alice's
+   window finish before Carol starts hers.
+   - **Verify:** each player sees only their own selected faces. No card identity
+     appears on another player's screen, and one player's taps do not restart
+     anyone else's clock.
+   - **Verify:** Alice stays on the setup screen with face-down cards and a
+     waiting message. When Carol is last, her screen also stays in place for
+     the rest of her full peek window.
+7. Once every setup window has ended or timed out, all clients move to `turn`
+   together, starting with Alice (round 1 starts at seat 0).
+   - **Verify:** no turn command or first-turn timer becomes active before this
+     transition.
 
 ---
 

@@ -2,9 +2,57 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, it } from 'node:test';
 import type { WebSocket } from 'ws';
-import { CARD_SPECS } from '@lazy-sunday/engine';
-import { handleConnection } from './gameRoom';
+import { applyCommand, CARD_SPECS, createRound } from '@lazy-sunday/engine';
+import { handleConnection, timerMessageFor } from './gameRoom';
 import { createRoom, type Room } from './rooms';
+
+describe('turn timer messages', () => {
+  it('shows each setup player only their own authoritative remaining time', () => {
+    const room = createRoom();
+    room.status = 'playing';
+    room.round = createRound({ players: ['a', 'b'], startingPlayer: 0, seed: 1 });
+    room.turnDeadlines.set('a', 1_100);
+    room.turnDeadlines.set('b', 2_100);
+
+    assert.deepEqual(timerMessageFor(room, 'a', 100), {
+      type: 'turnTimer',
+      remainingMs: 1_000,
+      players: ['a', 'b'],
+    });
+    assert.deepEqual(timerMessageFor(room, 'b', 100), {
+      type: 'turnTimer',
+      remainingMs: 2_000,
+      players: ['a', 'b'],
+    });
+  });
+
+  it('shows the active normal-play countdown to every player', () => {
+    const room = createRoom();
+    room.status = 'playing';
+    room.round = createRound({ players: ['a', 'b'], startingPlayer: 0, seed: 2 });
+    room.round.phase = 'turn';
+    room.turnDeadlines.set('a', 1_100);
+
+    assert.deepEqual(timerMessageFor(room, 'b', 100), {
+      type: 'turnTimer',
+      remainingMs: 1_000,
+      players: ['a'],
+    });
+  });
+
+  it('reports a paused clock when the recipient has no setup deadline', () => {
+    const room = createRoom();
+    room.status = 'playing';
+    room.round = createRound({ players: ['a', 'b'], startingPlayer: 0, seed: 3 });
+    room.turnDeadlines.set('b', 2_100);
+
+    assert.deepEqual(timerMessageFor(room, 'a', 100), {
+      type: 'turnTimer',
+      remainingMs: null,
+      players: ['a', 'b'],
+    });
+  });
+});
 
 type Message = Record<string, any>;
 
@@ -209,7 +257,9 @@ describe('unanimous round restart vote', () => {
   it('cancels an open vote when the round finishes normally', () => {
     const ctx = createPlayingRoom({ instantNotMe: true });
     for (const player of ctx.all) {
-      player.socket.message({ type: 'command', command: { type: 'setupPeek', slots: [0, 1] } });
+      const result = applyCommand(ctx.room.round!, { type: 'forceSkipTurn', player: player.id });
+      assert.equal(result.ok, true);
+      if (result.ok) ctx.room.round = result.state;
     }
     assert.equal(ctx.room.round?.phase, 'turn');
     propose(ctx.alice);
