@@ -108,6 +108,10 @@ select {
   padding: 20px 16px 48px;
 }
 
+.shell-game {
+  max-width: 1180px;
+}
+
 .card {
   background: var(--felt);
   border-radius: var(--radius-lg);
@@ -586,6 +590,9 @@ select {
 }
 
 .phase-banner {
+  position: sticky;
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 26;
   background: var(--night-panel);
   color: var(--night-accent);
   border-radius: var(--radius);
@@ -595,6 +602,7 @@ select {
   gap: 6px 18px;
   align-items: baseline;
   font-size: 15px;
+  box-shadow: var(--shadow-card);
 }
 
 .phase-banner strong {
@@ -611,8 +619,25 @@ select {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-height: 46dvh;
+}
+
+.table-center-zone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 210px;
+  padding: 10px 12px;
+  border: 1px solid rgba(71, 37, 15, 0.12);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.74) 0 42%, rgba(255, 233, 194, 0.34) 43% 68%, transparent 69%),
+    rgba(255, 255, 255, 0.28);
+}
+
+.table-center-zone .center-piles {
+  width: 100%;
 }
 
 /* Center-table action announcement — shared text plus a tiny symbolic card
@@ -914,58 +939,151 @@ select {
   width: 96px;
 }
 
-/* -- opponent rows -- */
+/* -- opponent seats -- compact enough for every 2-7 player layout without
+   losing direct access to any card button. DOM and visual order both follow
+   the stable server seat so keyboard navigation stays predictable. */
 
-.opponent-rows {
+.opponent-zone {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.opponent-zone-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.opponent-zone-header h2 {
+  font-size: 18px;
+}
+
+.opponent-zone-header span {
+  color: rgba(71, 37, 15, 0.68);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.opponent-rows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .opponent-row {
-  background: rgba(255, 255, 255, 0.55);
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(71, 37, 15, 0.1);
   border-radius: var(--radius);
-  padding: 8px 10px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
+}
+
+.opponent-row:only-child {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: min(100%, 520px);
 }
 
 .opponent-row[data-current='true'] {
   background: var(--day-cream);
+  border-color: var(--day-base);
   box-shadow: 0 0 0 2px var(--day-base) inset;
 }
 
+.opponent-row[data-connected='false'] {
+  background: rgba(255, 255, 255, 0.36);
+}
+
 .opponent-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 8px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.opponent-identity {
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 700;
-  min-height: 28px;
+  gap: 5px;
+}
+
+.opponent-identity .avatar-dot {
+  width: 24px;
+  height: 24px;
+}
+
+.opponent-identity .conn-dot {
+  width: 8px;
+  height: 8px;
 }
 
 .opponent-name {
-  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.opponent-status {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 19px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.opponent-status::-webkit-scrollbar {
+  display: none;
+}
+
+.opponent-seat-number,
+.opponent-presence-label {
+  flex: 0 0 auto;
+  color: rgba(71, 37, 15, 0.66);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.opponent-row[data-connected='false'] .opponent-presence-label {
+  color: var(--danger);
 }
 
 .turn-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--day-base);
-  box-shadow: 0 0 0 3px rgba(245, 166, 43, 0.3);
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  border: 1px solid var(--day-base);
+  border-radius: 999px;
+  background: var(--day-sun);
+  color: var(--ink);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
 }
 
 .card-count {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: rgba(71, 37, 15, 0.7);
-  min-width: 20px;
+  color: rgba(71, 37, 15, 0.72);
+  font-size: 11px;
+  white-space: nowrap;
   text-align: right;
 }
 
@@ -1018,8 +1136,14 @@ select {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 2px;
+  min-width: 0;
+  padding: 3px 2px 5px;
+  scroll-snap-type: x proximity;
   scrollbar-width: thin;
+}
+
+.opponent-row .card-img-sm {
+  width: 44px;
 }
 
 .opp-slot {
@@ -1032,10 +1156,12 @@ select {
   border-radius: 8px;
   transition: transform 150ms ease-out, box-shadow 150ms ease-out, opacity 150ms ease-out;
   cursor: pointer;
+  scroll-snap-align: start;
 }
 
 .opp-slot:disabled {
   cursor: default;
+  opacity: 0.78;
 }
 
 /* -- center piles -- */
@@ -1136,13 +1262,17 @@ select {
 /* -- my row -- */
 
 .my-row {
-  margin-top: auto;
+  position: sticky;
+  top: calc(70px + env(safe-area-inset-top));
+  z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  background: rgba(255, 255, 255, 0.4);
+  gap: 8px;
+  background: rgba(255, 246, 232, 0.96);
+  border: 2px solid rgba(71, 37, 15, 0.15);
   border-radius: var(--radius);
   padding: 10px;
+  box-shadow: 0 -2px 18px rgba(71, 37, 15, 0.12), var(--shadow-card);
 }
 
 .my-row-header {
@@ -1172,6 +1302,8 @@ select {
   gap: 10px;
   overflow-x: auto;
   padding: 4px;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 4px;
   scrollbar-width: thin;
 }
 
@@ -1185,6 +1317,7 @@ select {
   border-radius: 10px;
   transition: transform 150ms ease-out, box-shadow 150ms ease-out;
   cursor: pointer;
+  scroll-snap-align: start;
 }
 
 .slot-btn-lg {
@@ -2348,7 +2481,37 @@ select {
   }
 }
 
-/* -- mobile one-handed pass (375x812 baseline) -- */
+/* The arena grows by adding seat columns, not by returning to a vertical
+   opponent stack. Two columns cover phone/tablet; three keep all six possible
+   opponents within two shallow rows on wide screens. */
+@media (min-width: 900px) {
+  .opponent-rows {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .table-felt {
+    padding: 16px 18px 24px;
+  }
+
+  .table-center-zone {
+    min-height: 230px;
+  }
+
+  .my-list-row {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 899px) {
+  .opponent-row:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: min(100%, 520px);
+  }
+}
+
+/* -- mobile one-handed pass (320x568 and 375x812 baselines) -- */
 
 @media (max-width: 480px) {
   .shell {
@@ -2357,10 +2520,78 @@ select {
 
   .table-felt {
     padding: 12px 8px 88px; /* clears the fixed slam button + footer controls */
+    gap: 10px;
+  }
+
+  .phase-banner {
+    padding: 9px 11px;
+    gap: 4px 10px;
+    font-size: 13px;
+  }
+
+  .phase-banner strong {
+    font-size: 16px;
+  }
+
+  .table-stage {
+    gap: 10px;
+  }
+
+  .table-center-zone {
+    min-height: 188px;
+    padding: 6px;
+  }
+
+  .pile-stage {
+    gap: 14px;
   }
 
   .my-row {
+    top: calc(62px + env(safe-area-inset-top));
     padding: 10px 8px;
+  }
+
+  .my-row-header {
+    gap: 4px;
+  }
+
+  .turn-hint {
+    flex-basis: 100%;
+  }
+
+  .slot-btn-lg,
+  .slot-gap-lg {
+    width: 64px;
+  }
+
+  .my-list-row {
+    gap: 8px;
+  }
+
+  .opponent-zone-header h2 {
+    font-size: 16px;
+  }
+
+  .opponent-rows {
+    gap: 6px;
+  }
+
+  .opponent-row {
+    padding: 7px 6px;
+  }
+
+  .opponent-identity .avatar-dot {
+    width: 20px;
+    height: 20px;
+  }
+
+  .opponent-status {
+    gap: 4px;
+  }
+
+  .caller-badge {
+    padding: 2px 6px;
+    font-size: 9px;
   }
 
   .slam-btn {
@@ -2396,5 +2627,9 @@ select {
 
   .table-felt {
     padding-bottom: 72px;
+  }
+
+  .my-row {
+    top: calc(58px + env(safe-area-inset-top));
   }
 }

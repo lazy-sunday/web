@@ -16,7 +16,7 @@ export default function RoomClient({ code }: { code: string }) {
   const inGame = seated && lobby !== null && lobby.status !== 'lobby' && view !== null;
 
   return (
-    <main className="shell">
+    <main className={inGame ? 'shell shell-game' : 'shell'}>
       <header className="lobby-header">
         <div>
           <Link href="/" className="back-link">
