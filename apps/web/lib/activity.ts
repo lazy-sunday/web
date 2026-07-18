@@ -315,6 +315,22 @@ export function activityEntryKey(entry: ActivityEntry | null): string | null {
   return entry ? `${entry.id}:${entry.seq}` : null;
 }
 
+/** Lock only the incoming player's table while the previous player's move is
+ *  still occupying the center spotlight. The player resolving an action keeps
+ *  control because their own pending announcement has the same actor id. */
+export function isTableHandoffBlocked(
+  spotlight: ActivityEntry | null,
+  currentPlayer: PlayerId | null,
+  viewer: PlayerId | null,
+): boolean {
+  return Boolean(
+    spotlight?.actor &&
+      viewer &&
+      currentPlayer === viewer &&
+      spotlight.actor !== currentPlayer,
+  );
+}
+
 /** Non-action public events that still belong in the log. Card names appear
  *  only where the rules already make them public (discards, slaps). Returns
  *  null for events we don't log (turn/setup churn) and for private events

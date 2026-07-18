@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { EngineEvent } from '@lazy-sunday/engine';
-import { activityEntryKey, buildActivityLog, latestSpotlightEntry } from './activity';
+import {
+  activityEntryKey,
+  buildActivityLog,
+  isTableHandoffBlocked,
+  latestSpotlightEntry,
+} from './activity';
 
 const nameOf = (id: string | null) => id ? ({ a: 'Alice', b: 'Bob', c: 'Carol' }[id] ?? id) : '—';
 
@@ -110,5 +115,21 @@ describe('table activity spotlight', () => {
     const after = latestSpotlightEntry(buildActivityLog([started, outcome, unrelated], nameOf, idOf));
 
     assert.equal(activityEntryKey(before), activityEntryKey(after));
+  });
+
+  it('blocks only the incoming player until the previous move leaves the spotlight', () => {
+    const previousMove = latestSpotlightEntry(buildActivityLog([
+      {
+        type: 'kept',
+        player: 'a',
+        slot: 0,
+        discarded: { id: 'public-1', name: 'Nap', effort: 0, kind: 'chore' },
+      },
+    ], nameOf));
+
+    assert.equal(isTableHandoffBlocked(previousMove, 'b', 'b'), true);
+    assert.equal(isTableHandoffBlocked(previousMove, 'b', 'a'), false);
+    assert.equal(isTableHandoffBlocked(previousMove, 'a', 'a'), false);
+    assert.equal(isTableHandoffBlocked(null, 'b', 'b'), false);
   });
 });
