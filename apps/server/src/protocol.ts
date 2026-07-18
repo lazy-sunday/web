@@ -157,7 +157,7 @@ export type ClientMessage =
   | { type: 'setToggle'; toggle: 'matchTo100' | 'greatEscape' | 'instantNotMe'; value: boolean }
   | { type: 'setToggle'; toggle: 'turnTimeoutSeconds' | 'deckCount'; value: number }
   | { type: 'startGame' }
-  | { type: 'command'; command: ClientCommand }
+  | { type: 'command'; command: ClientCommand; requestId?: number }
   | { type: 'nextRound' }
   | { type: 'proposeRoundRestart' }
   | { type: 'voteRoundRestart'; voteId: number; approve: boolean }
@@ -198,7 +198,7 @@ export type ServerMessage =
   | { type: 'sessionEvent'; event: SessionEvent }
   | { type: 'roundRestartVote'; update: RoundRestartVoteUpdate }
   | { type: 'reaction'; player: PlayerId; emoji: string }
-  | { type: 'error'; code: ServerErrorCode; message: string }
+  | { type: 'error'; code: ServerErrorCode; message: string; requestId?: number }
   | { type: 'pong' };
 
 // ---------------------------------------------------------------------------
@@ -242,6 +242,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (typeof c !== 'object' || c === null) return null;
       const type = (c as Record<string, unknown>)['type'];
       if (typeof type !== 'string' || type === 'forceSkipTurn') return null;
+      if (m['requestId'] !== undefined && (!Number.isSafeInteger(m['requestId']) || (m['requestId'] as number) < 1)) {
+        return null;
+      }
       return m as unknown as ClientMessage;
     }
     case 'voteRoundRestart':

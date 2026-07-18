@@ -143,6 +143,24 @@ function createPlayingRoom(options: { instantNotMe?: boolean } = {}): TestRoom {
   return { room, alice, bob, carol, all: [alice, bob, carol] };
 }
 
+describe('command error correlation', () => {
+  it('returns the request id with a rejected engine command', () => {
+    const ctx = createPlayingRoom();
+    ctx.alice.socket.message({
+      type: 'command',
+      requestId: 17,
+      command: { type: 'setupPeek', slot: 99 },
+    });
+
+    assert.deepEqual(latestError(ctx.alice), {
+      type: 'error',
+      code: 'invalidSlot',
+      message: 'pick a card from your own list',
+      requestId: 17,
+    });
+  });
+});
+
 function propose(player: TestPlayer): number {
   player.socket.message({ type: 'proposeRoundRestart' });
   const update = latest(player, 'roundRestartVote')?.update;
