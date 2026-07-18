@@ -92,7 +92,9 @@ export function ActionModal({
   // Knock It Out decision step: peeked, now discard-or-keep.
   if (pa.step === 'knockItOutDecision') {
     const slot = pa.knockSlot ?? 0;
-    const peeked = peeks.peekAt(myId, slot);
+    const visualSlot = renderSlotsFor(view.players.find((player) => player.id === myId))
+      .find((candidate) => candidate.cardSlot === slot)?.visualSlot ?? slot;
+    const peeked = peeks.peekAt(myId, visualSlot);
     return (
       <ModalScrim label="Knock It Out — discard or keep">
         <div className="action-modal night">
@@ -274,7 +276,7 @@ function SlotPicker({
         if (!slot.occupied || slot.cardSlot === null) {
           return <span key={slot.visualSlot} className="slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
         }
-        const peeked = peeks.peekAt(owner, slot.cardSlot);
+        const peeked = peeks.peekAt(owner, slot.visualSlot);
         return (
           <button
             key={slot.visualSlot}

@@ -133,7 +133,11 @@ export type Command =
 
 export interface PeekReveal {
   owner: PlayerId;
+  /** Compact list index retained for older clients. */
   slot: number;
+  /** Stable table position. Current clients use this so list mutations cannot
+   * move a remembered face onto another card. */
+  visualSlot?: number;
   card: Card;
 }
 

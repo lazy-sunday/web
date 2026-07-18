@@ -19,8 +19,17 @@
 // log from dropping every peek after its retained window fills.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SETUP_PEEK_MS, type Card, type EngineEvent, type PeekReason, type PlayerId } from '@lazy-sunday/engine';
+import {
+  SETUP_PEEK_MS,
+  type Card,
+  type EngineEvent,
+  type PeekReason,
+  type PeekReveal,
+  type PlayerId,
+  type RoundView,
+} from '@lazy-sunday/engine';
 import { eventsAfter } from './eventLog';
+import { renderSlotsFor } from './slots';
 import type { GameEvent } from './useGameSocket';
 
 export interface ActivePeek {
@@ -42,8 +51,27 @@ export function peekTtlMs(reason: PeekReason): number {
   return reason === 'setup' ? SETUP_PEEK_MS : GRANTED_PEEK_MS;
 }
 
-function keyFor(owner: PlayerId, slot: number): string {
-  return `${owner}:${slot}`;
+type PeekView = Pick<RoundView, 'players'>;
+
+function keyFor(owner: PlayerId, visualSlot: number): string {
+  return `${owner}:${visualSlot}`;
+}
+
+function visualSlotFor(
+  owner: PlayerId,
+  compactSlot: number,
+  explicitVisualSlot: number | undefined,
+  view: PeekView | null,
+): number {
+  if (Number.isInteger(explicitVisualSlot)) return explicitVisualSlot!;
+  const player = view?.players.find((candidate) => candidate.id === owner);
+  return renderSlotsFor(player).find((candidate) => candidate.cardSlot === compactSlot)?.visualSlot ?? compactSlot;
+}
+
+/** Resolves current visual coordinates while still accepting compact-only peek
+ * events from an older server during a rolling deployment. */
+export function visualSlotForReveal(reveal: PeekReveal, view: PeekView | null): number {
+  return visualSlotFor(reveal.owner, reveal.slot, reveal.visualSlot, view);
 }
 
 /** A setup peek is sent as one event per tapped card. Every card in that
@@ -71,15 +99,77 @@ export function reducePeek(
   ev: PeekEvent,
   now: number,
   expiresAt = deadlineForPeek(prev, ev, now),
+  view: PeekView | null = null,
 ): Map<string, ActivePeek> {
   const next = new Map(prev);
   for (const reveal of ev.reveals) {
-    next.set(keyFor(reveal.owner, reveal.slot), { card: reveal.card, reason: ev.reason, expiresAt });
+    next.set(keyFor(reveal.owner, visualSlotForReveal(reveal, view)), {
+      card: reveal.card,
+      reason: ev.reason,
+      expiresAt,
+    });
   }
   return next;
 }
 
-export function usePeeks(events: GameEvent[], myId: PlayerId | null) {
+/** Remove remembered faces when a public move replaces the physical card at a
+ * stable visual position. Removals are also cleared by public card id when that
+ * identity is available. */
+export function invalidatePeeksForEvent(
+  prev: ReadonlyMap<string, ActivePeek>,
+  ev: EngineEvent,
+  view: PeekView | null,
+): Map<string, ActivePeek> {
+  if (ev.type === 'peek') return new Map(prev);
+  const next = new Map(prev);
+  const clearSlot = (owner: PlayerId, slot: number, explicitVisualSlot?: number) => {
+    next.delete(keyFor(owner, visualSlotFor(owner, slot, explicitVisualSlot, view)));
+  };
+  const clearCard = (cardId: string) => {
+    for (const [key, active] of next) {
+      if (active.card.id === cardId) next.delete(key);
+    }
+  };
+
+  switch (ev.type) {
+    case 'kept':
+      clearSlot(ev.player, ev.slot, ev.visualSlot);
+      if (ev.discarded) clearCard(ev.discarded.id);
+      break;
+    case 'tookFromDone':
+      clearSlot(ev.player, ev.slot, ev.visualSlot);
+      clearCard(ev.discarded.id);
+      break;
+    case 'traded':
+      clearSlot(ev.player, ev.mySlot, ev.myVisualSlot);
+      clearSlot(ev.opponentId, ev.opponentSlot, ev.opponentVisualSlot);
+      break;
+    case 'switcherood':
+      clearSlot(ev.a, ev.aSlot, ev.aVisualSlot);
+      clearSlot(ev.b, ev.bSlot, ev.bVisualSlot);
+      break;
+    case 'notMyJobbed':
+      clearSlot(ev.fromId, ev.fromSlot, ev.fromVisualSlot);
+      clearSlot(ev.toId, ev.toSlot, ev.toVisualSlot);
+      break;
+    case 'landlordsNoticed':
+      clearSlot(ev.targetId, ev.slot, ev.visualSlot);
+      break;
+    case 'giftGiven':
+      clearSlot(ev.to, ev.toSlot, ev.toVisualSlot);
+      break;
+    case 'knockedOut':
+    case 'slapCorrect':
+      clearCard(ev.card.id);
+      break;
+    case 'roundRevealed':
+      next.clear();
+      break;
+  }
+  return next;
+}
+
+export function usePeeks(events: GameEvent[], myId: PlayerId | null, view: RoundView | null) {
   const [peeks, setPeeks] = useState<Map<string, ActivePeek>>(new Map());
   const lastSeenSequence = useRef(0);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -98,7 +188,10 @@ export function usePeeks(events: GameEvent[], myId: PlayerId | null) {
     lastSeenSequence.current = newEvents.at(-1)!.sequence;
 
     for (const { event: ev } of newEvents) {
-      if (ev.type !== 'peek') continue;
+      if (ev.type !== 'peek') {
+        setPeeks((prev) => invalidatePeeksForEvent(prev, ev, view));
+        continue;
+      }
       if (ev.to !== myId) continue;
       const now = Date.now();
       const deadline =
@@ -108,9 +201,9 @@ export function usePeeks(events: GameEvent[], myId: PlayerId | null) {
             : now + SETUP_PEEK_MS
           : now + GRANTED_PEEK_MS;
       if (ev.reason === 'setup') setupDeadline.current = deadline;
-      setPeeks((prev) => reducePeek(prev, ev, now, deadline));
+      setPeeks((prev) => reducePeek(prev, ev, now, deadline, view));
       for (const reveal of ev.reveals) {
-        const key = keyFor(reveal.owner, reveal.slot);
+        const key = keyFor(reveal.owner, visualSlotForReveal(reveal, view));
         const existing = timers.current.get(key);
         if (existing) clearTimeout(existing);
         const t = setTimeout(() => {
@@ -131,7 +224,7 @@ export function usePeeks(events: GameEvent[], myId: PlayerId | null) {
         timers.current.set(key, t);
       }
     }
-  }, [events, myId]);
+  }, [events, myId, view]);
 
   useEffect(() => {
     const active = timers.current;
@@ -144,8 +237,8 @@ export function usePeeks(events: GameEvent[], myId: PlayerId | null) {
   return useMemo(
     () => ({
       /** Returns the revealed card for this slot if the peek is still active, else null. */
-      peekAt: (owner: PlayerId, slot: number): Card | null => {
-        const active = peeks.get(keyFor(owner, slot));
+      peekAt: (owner: PlayerId, visualSlot: number): Card | null => {
+        const active = peeks.get(keyFor(owner, visualSlot));
         return active && active.expiresAt > Date.now() ? active.card : null;
       },
       hasAny: peeks.size > 0,
