@@ -120,7 +120,7 @@ function handleMessage(conn: Conn, msg: ClientMessage): void {
       handleStartGame(room, player);
       return;
     case 'command':
-      handleCommand(room, player, msg.command);
+      handleCommand(room, player, msg.command, msg.requestId);
       return;
     case 'nextRound':
       handleNextRound(room, player);
@@ -425,9 +425,10 @@ function handleCommand(
   room: Room,
   player: RoomPlayer,
   clientCmd: Extract<ClientMessage, { type: 'command' }>['command'],
+  requestId?: number,
 ): void {
   if (room.status !== 'playing' || !room.round) {
-    sendTo(player, { type: 'error', code: 'wrongStatus', message: 'the round is not in play' });
+    sendTo(player, commandError('wrongStatus', 'the round is not in play', requestId));
     return;
   }
 
@@ -436,7 +437,7 @@ function handleCommand(
     const now = Date.now();
     player.slapTimes = player.slapTimes.filter((t) => now - t < SLAP_WINDOW_MS);
     if (player.slapTimes.length >= SLAP_MAX_IN_WINDOW) {
-      sendTo(player, { type: 'error', code: 'rateLimited', message: 'slow down — too many slaps' });
+      sendTo(player, commandError('rateLimited', 'slow down — too many slaps', requestId));
       return;
     }
     player.slapTimes.push(now);
@@ -446,11 +447,11 @@ function handleCommand(
   // the socket's identity is the only identity the server trusts.
   const cmd = normalizeClientCommand(room.round, player.id, clientCmd);
   if ((cmd as { type: string }).type === 'forceSkipTurn') {
-    sendTo(player, { type: 'error', code: 'badMessage', message: 'nice try' });
+    sendTo(player, commandError('badMessage', 'nice try', requestId));
     return;
   }
 
-  const applied = applyToRoom(room, cmd, player);
+  const applied = applyToRoom(room, cmd, player, requestId);
 
   // A rejected command from the current normal-play blocker restarts the turn
   // timer — they are demonstrably at the keyboard. During setup, rejected taps
@@ -462,7 +463,12 @@ function handleCommand(
 
 /** Apply an engine command; on success commit state, route events, broadcast views.
  *  Fully synchronous — never interleave async work in here. */
-function applyToRoom(room: Room, cmd: Command, feedbackTo: RoomPlayer | null): boolean {
+function applyToRoom(
+  room: Room,
+  cmd: Command,
+  feedbackTo: RoomPlayer | null,
+  requestId?: number,
+): boolean {
   if (!room.round) return false;
   const wasSetupPeek = room.round.phase === 'setupPeek';
   const setupPlayerBefore = wasSetupPeek
@@ -471,7 +477,9 @@ function applyToRoom(room: Room, cmd: Command, feedbackTo: RoomPlayer | null): b
   const setupSlotCountBefore = setupPlayerBefore?.setupPeekSlots.length ?? null;
   const result = applyCommand(room.round, cmd);
   if (!result.ok) {
-    if (feedbackTo) sendTo(feedbackTo, { type: 'error', code: result.code, message: result.message });
+    if (feedbackTo) {
+      sendTo(feedbackTo, commandError(result.code, result.message, requestId));
+    }
     return false;
   }
   room.round = result.state;
@@ -514,6 +522,19 @@ function applyToRoom(room: Room, cmd: Command, feedbackTo: RoomPlayer | null): b
     resetTimers(room, hasTableActivitySpotlight(result.events) ? TABLE_ACTIVITY_SPOTLIGHT_MS : 0);
   }
   return true;
+}
+
+function commandError(
+  code: string,
+  message: string,
+  requestId: number | undefined,
+): Extract<ServerMessage, { type: 'error' }> {
+  return {
+    type: 'error',
+    code,
+    message,
+    ...(requestId !== undefined ? { requestId } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

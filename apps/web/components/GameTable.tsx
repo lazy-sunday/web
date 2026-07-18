@@ -14,6 +14,7 @@ import type { useGameSocket } from '../lib/useGameSocket';
 import { buildActivityLog, latestSpotlightEntry, type ActivityVisual } from '../lib/activity';
 import { ActionAnnouncement, ActivityLog, useActivitySpotlight } from './TableActivity';
 import { eventsAfter } from '../lib/eventLog';
+import { commandErrorMatches } from '../lib/commandPending';
 import { usePeeks } from '../lib/usePeeks';
 import { useCountdown } from '../lib/useCountdown';
 import { useSound } from '../lib/useSound';
@@ -72,11 +73,17 @@ export function GameTable({ game }: { game: Game }) {
   const latestActivity = useMemo(() => latestSpotlightEntry(activityEntries), [activityEntries]);
   const spotlight = useActivitySpotlight(latestActivity);
 
-  const [inFlight, setInFlight] = useState(false);
+  const [pendingRequestId, setPendingRequestId] = useState<number | null>(null);
+  const inFlight = pendingRequestId !== null;
   const mySetupPeekSlotsKey = view?.mySetupPeekSlots.join(',') ?? '';
   useEffect(() => {
-    setInFlight(false);
+    setPendingRequestId(null);
   }, [view?.phase, view?.currentPlayer, view?.pendingAction, view?.myDrawnCard, mySetupPeekSlotsKey]);
+  useEffect(() => {
+    if (commandErrorMatches(pendingRequestId, game.lastError)) {
+      setPendingRequestId(null);
+    }
+  }, [pendingRequestId, game.lastError]);
 
   // "Pick a slot" mode is shared between the pile that started it (DONE pile)
   // and MyRow (which renders the pickable slots), so it lives up here. Hooks
@@ -119,18 +126,15 @@ export function GameTable({ game }: { game: Game }) {
   const canSelectSlapTarget = view.doneTop !== null && view.phase !== 'action' && view.pendingGift === null && pickMode === null;
   const canSelectOpponentSlapTarget = canSelectSlapTarget && myListSize > 0;
 
-  function sendGuarded(fn: () => void) {
+  function sendGuarded(fn: () => number) {
     if (inFlight) return;
-    setInFlight(true);
-    fn();
+    setPendingRequestId(fn());
   }
 
   function onPickSlot(slot: number) {
     if (pickMode === 'keep') {
-      setPickMode(null);
       sendGuarded(() => game.sendCommand({ type: 'keepDrawn', slot }));
     } else if (pickMode === 'takeFromDone') {
-      setPickMode(null);
       sendGuarded(() => game.sendCommand({ type: 'takeFromDone', slot }));
     }
   }
@@ -425,7 +429,7 @@ function SetupPeekPanel({
   game: Game;
   peeks: ReturnType<typeof usePeeks>;
   inFlight: boolean;
-  sendGuarded: (fn: () => void) => void;
+  sendGuarded: (fn: () => number) => void;
 }) {
   const { view, me } = game;
   const peekSeconds = useCountdown(game.turnTimer.deadline);
@@ -615,7 +619,7 @@ function CenterPiles({
   game: Game;
   myListSize: number;
   inFlight: boolean;
-  sendGuarded: (fn: () => void) => void;
+  sendGuarded: (fn: () => number) => void;
   isMyTurn: boolean;
   pickMode: 'keep' | 'takeFromDone' | null;
   onStartKeepPick: () => void;

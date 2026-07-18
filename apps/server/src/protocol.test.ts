@@ -16,6 +16,27 @@ describe('client command protocol', () => {
     );
   });
 
+  it('accepts positive command request ids and rejects malformed ones', () => {
+    assert.deepEqual(
+      parseClientMessage(JSON.stringify({
+        type: 'command',
+        requestId: 7,
+        command: { type: 'setupPeek', slot: 2 },
+      })),
+      { type: 'command', requestId: 7, command: { type: 'setupPeek', slot: 2 } },
+    );
+    for (const requestId of [0, -1, 1.5, '7']) {
+      assert.equal(
+        parseClientMessage(JSON.stringify({
+          type: 'command',
+          requestId,
+          command: { type: 'setupPeek', slot: 2 },
+        })),
+        null,
+      );
+    }
+  });
+
   it('continues to reject client-authored force skips', () => {
     assert.equal(
       parseClientMessage(JSON.stringify({ type: 'command', command: { type: 'forceSkipTurn' } })),

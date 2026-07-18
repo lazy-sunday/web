@@ -66,13 +66,13 @@ export interface GameSocket {
   turnTimer: TurnTimer;
   /** Current restart proposal or the latest short-lived result. */
   roundRestartVote: RoundRestartVoteUpdate | null;
-  lastError: { code: string; message: string } | null;
+  lastError: { code: string; message: string; requestId?: number } | null;
   /** Join fresh with a chosen name + color (also persists identity for rejoin). */
   join: (name: string, color: string) => void;
   /** Send a raw protocol message. */
   send: (msg: ClientMessage) => void;
   /** Send an engine command (server stamps our player id). */
-  sendCommand: (command: VisualClientCommand) => void;
+  sendCommand: (command: VisualClientCommand) => number;
   /** Send an emoji reaction (server broadcasts it back as `reaction`). */
   sendReaction: (emoji: string) => void;
   clearError: () => void;
@@ -116,12 +116,13 @@ export function useGameSocket(roomCode: string): GameSocket {
   const [reactions, setReactions] = useState<ReactionEvent[]>([]);
   const [turnTimer, setTurnTimer] = useState<TurnTimer>({ deadline: null, players: [] });
   const [roundRestartVote, setRoundRestartVote] = useState<RoundRestartVoteUpdate | null>(null);
-  const [lastError, setLastError] = useState<{ code: string; message: string } | null>(null);
+  const [lastError, setLastError] = useState<{ code: string; message: string; requestId?: number } | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const pendingProfile = useRef<{ name: string; color: string } | null>(null);
   const closedByUs = useRef(false);
   const eventSequence = useRef(0);
+  const commandRequestSequence = useRef(0);
 
   const rawSend = useCallback((msg: ClientMessage) => {
     const ws = wsRef.current;
@@ -206,7 +207,11 @@ export function useGameSocket(roomCode: string): GameSocket {
             break;
           }
           case 'error':
-            setLastError({ code: String(msg.code), message: msg.message });
+            setLastError({
+              code: String(msg.code),
+              message: msg.message,
+              ...(msg.requestId !== undefined ? { requestId: msg.requestId } : {}),
+            });
             break;
           case 'sessionEvent':
             setSessionEvents((prev) => {
@@ -262,10 +267,16 @@ export function useGameSocket(roomCode: string): GameSocket {
   );
 
   const sendCommand = useCallback(
-    (command: VisualClientCommand) => rawSend({
-      type: 'command',
-      command: encodeClientCommand(command, view, me?.playerId ?? null),
-    }),
+    (command: VisualClientCommand) => {
+      commandRequestSequence.current += 1;
+      const requestId = commandRequestSequence.current;
+      rawSend({
+        type: 'command',
+        command: encodeClientCommand(command, view, me?.playerId ?? null),
+        requestId,
+      });
+      return requestId;
+    },
     [rawSend, view, me?.playerId],
   );
 
