@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { EngineEvent } from '@lazy-sunday/engine';
+import type { Card, EngineEvent } from '@lazy-sunday/engine';
 import {
   activityEntryKey,
   buildActivityLog,
@@ -9,8 +9,192 @@ import {
 } from './activity';
 
 const nameOf = (id: string | null) => id ? ({ a: 'Alice', b: 'Bob', c: 'Carol' }[id] ?? id) : '—';
+const nap: Card = { id: 'nap', name: 'Nap', effort: 0, kind: 'chore' };
 
 describe('table activity spotlight', () => {
+  it('uses the approved short center copy for every spotlight message', () => {
+    const cases: { label: string; events: EngineEvent[]; expected: string }[] = [
+      {
+        label: 'action starts',
+        events: [{ type: 'actionStarted', player: 'a', action: 'Snoop' }],
+        expected: 'Alice: Snoop...',
+      },
+      {
+        label: 'action cancelled',
+        events: [{ type: 'actionCancelled', player: 'a', action: 'Snoop' }],
+        expected: 'Alice skipped Snoop.',
+      },
+      {
+        label: 'Check the List',
+        events: [{ type: 'checkedTheList', player: 'a', slot: 0, visualSlot: 2 }],
+        expected: 'Alice checked slot 3.',
+      },
+      {
+        label: 'Knock It Out choosing',
+        events: [{ type: 'knockItOutPeeked', player: 'a', slot: 0, visualSlot: 1 }],
+        expected: 'Alice is choosing slot 2...',
+      },
+      {
+        label: 'Knock It Out discarded',
+        events: [{ type: 'knockedOut', player: 'a', card: nap }],
+        expected: 'Alice discarded Nap.',
+      },
+      {
+        label: 'Knock It Out kept',
+        events: [
+          { type: 'actionStarted', player: 'a', action: 'Knock It Out' },
+          { type: 'knockItOutPeeked', player: 'a', slot: 0, visualSlot: 4 },
+          { type: 'knockItOutKept', player: 'a' },
+        ],
+        expected: 'Alice kept slot 5.',
+      },
+      {
+        label: "Let's Trade",
+        events: [{
+          type: 'traded',
+          player: 'a',
+          mySlot: 0,
+          myVisualSlot: 2,
+          opponentId: 'b',
+          opponentSlot: 0,
+          opponentVisualSlot: 0,
+        }],
+        expected: "Alice swapped slot 3 with Bob's slot 1.",
+      },
+      {
+        label: 'Switcheroo',
+        events: [{
+          type: 'switcherood',
+          player: 'a',
+          a: 'b',
+          aSlot: 0,
+          aVisualSlot: 1,
+          b: 'c',
+          bSlot: 0,
+          bVisualSlot: 3,
+        }],
+        expected: "Alice swapped Bob's slot 2 with Carol's slot 4.",
+      },
+      {
+        label: 'Snoop',
+        events: [{ type: 'snooped', player: 'a', targetId: 'b', slot: 0, visualSlot: 3 }],
+        expected: "Alice snooped on Bob's slot 4.",
+      },
+      {
+        label: 'Not My Job',
+        events: [{
+          type: 'notMyJobbed',
+          player: 'a',
+          fromId: 'b',
+          fromSlot: 0,
+          fromVisualSlot: 2,
+          toId: 'c',
+          toSlot: 0,
+          toVisualSlot: 5,
+        }],
+        expected: "Alice moved Bob's slot 3 to Carol's slot 6.",
+      },
+      {
+        label: "Landlord's Notice",
+        events: [{ type: 'landlordsNoticed', player: 'a', targetId: 'b', slot: 0, visualSlot: 4 }],
+        expected: 'Alice gave Bob a card at slot 5.',
+      },
+      {
+        label: "I'm Busy",
+        events: [{ type: 'imBusied', player: 'a', targetId: 'b' }],
+        expected: "Alice skipped Bob's next turn.",
+      },
+      {
+        label: 'kept drawn card',
+        events: [{ type: 'kept', player: 'a', slot: 0, visualSlot: 2, discarded: nap }],
+        expected: 'Alice kept the card at slot 3.',
+      },
+      {
+        label: 'took from DONE',
+        events: [{ type: 'tookFromDone', player: 'a', slot: 0, visualSlot: 1, taken: nap, discarded: nap }],
+        expected: 'Alice took Nap from DONE at slot 2.',
+      },
+      {
+        label: 'gift given',
+        events: [{ type: 'giftGiven', from: 'a', to: 'b', toSlot: 0, toVisualSlot: 3 }],
+        expected: 'Alice gave Bob a card at slot 4.',
+      },
+    ];
+
+    for (const testCase of cases) {
+      const entry = latestSpotlightEntry(buildActivityLog(testCase.events, nameOf));
+      assert.equal(entry?.centerText, testCase.expected, testCase.label);
+    }
+  });
+
+  it('uses short fallback copy when legacy events have no visual slots', () => {
+    const cases: { label: string; events: EngineEvent[]; expected: string }[] = [
+      {
+        label: 'Check the List',
+        events: [{ type: 'checkedTheList', player: 'a', slot: 0 }],
+        expected: 'Alice checked a card.',
+      },
+      {
+        label: 'Knock It Out choosing',
+        events: [{ type: 'knockItOutPeeked', player: 'a', slot: 0 }],
+        expected: 'Alice is choosing...',
+      },
+      {
+        label: 'Knock It Out kept',
+        events: [
+          { type: 'knockItOutPeeked', player: 'a', slot: 0 },
+          { type: 'knockItOutKept', player: 'a' },
+        ],
+        expected: 'Alice kept the card.',
+      },
+      {
+        label: "Let's Trade",
+        events: [{ type: 'traded', player: 'a', mySlot: 0, opponentId: 'b', opponentSlot: 0 }],
+        expected: 'Alice swapped with Bob.',
+      },
+      {
+        label: 'Switcheroo',
+        events: [{ type: 'switcherood', player: 'a', a: 'b', aSlot: 0, b: 'c', bSlot: 0 }],
+        expected: 'Alice swapped Bob and Carol.',
+      },
+      {
+        label: 'Snoop',
+        events: [{ type: 'snooped', player: 'a', targetId: 'b', slot: 0 }],
+        expected: 'Alice snooped on Bob.',
+      },
+      {
+        label: 'Not My Job',
+        events: [{ type: 'notMyJobbed', player: 'a', fromId: 'b', fromSlot: 0, toId: 'c', toSlot: 0 }],
+        expected: "Alice moved Bob's card to Carol.",
+      },
+      {
+        label: "Landlord's Notice",
+        events: [{ type: 'landlordsNoticed', player: 'a', targetId: 'b', slot: 0 }],
+        expected: 'Alice gave Bob a card.',
+      },
+      {
+        label: 'kept drawn card',
+        events: [{ type: 'kept', player: 'a', slot: 0, discarded: nap }],
+        expected: 'Alice kept the card.',
+      },
+      {
+        label: 'took from DONE',
+        events: [{ type: 'tookFromDone', player: 'a', slot: 0, taken: nap, discarded: nap }],
+        expected: 'Alice took Nap from DONE.',
+      },
+      {
+        label: 'gift given',
+        events: [{ type: 'giftGiven', from: 'a', to: 'b', toSlot: 0 }],
+        expected: 'Alice gave Bob a card.',
+      },
+    ];
+
+    for (const testCase of cases) {
+      const entry = latestSpotlightEntry(buildActivityLog(testCase.events, nameOf));
+      assert.equal(entry?.centerText, testCase.expected, testCase.label);
+    }
+  });
+
   it('folds a blind trade into one action and highlights both public slots', () => {
     const events: EngineEvent[] = [
       { type: 'actionStarted', player: 'a', action: "Let's Trade" },

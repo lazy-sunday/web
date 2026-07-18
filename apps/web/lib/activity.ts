@@ -44,6 +44,9 @@ export interface ActivityEntry {
   actor: PlayerId | null;
   /** One public, privacy-safe sentence describing the move. */
   text: string;
+  /** Short visual copy for the center-table spotlight. Detailed `text` remains
+   *  the Recent activity and screen-reader description. */
+  centerText?: string;
   /** 'pending' = announced but not yet resolved (mid-action); 'resolved' = done. */
   status: 'pending' | 'resolved';
   /** True for the eight playable actions (§5). */
@@ -62,6 +65,10 @@ type EventIdOf = (event: EngineEvent, index: number) => number;
 /** 1-based, human-facing slot label from the engine's 0-based public position. */
 function slotLabel(slot: number): string {
   return `slot ${slot + 1}`;
+}
+
+function centerSlotLabel(visualSlot: number | undefined): string | null {
+  return visualSlot === undefined ? null : slotLabel(visualSlot);
 }
 
 function publicSlot(slot: number, visualSlot: number | undefined): number {
@@ -120,6 +127,7 @@ export function buildActivityLog(
     actor: PlayerId,
     action: ActionName,
     text: string,
+    centerText: string,
     visual?: ActivityVisual,
   ): void => {
     if (active) {
@@ -127,12 +135,13 @@ export function buildActivityLog(
       active.actor = actor;
       active.action = action;
       active.text = text;
+      active.centerText = centerText;
       active.status = 'resolved';
       active.visual = visual;
     } else {
       // A client can connect after actionStarted but before the public outcome.
       // Keep the orphan outcome eligible for the center spotlight.
-      entries.push({ id: seq, seq, actor, action, text, status: 'resolved', isAction: true, spotlight: true, visual });
+      entries.push({ id: seq, seq, actor, action, text, centerText, status: 'resolved', isAction: true, spotlight: true, visual });
     }
     active = null;
     activeKnockSlot = null;
@@ -155,6 +164,7 @@ export function buildActivityLog(
           spotlight: true,
           action: event.action,
           text: `${nameOf(event.player)} is playing ${event.action}…`,
+          centerText: `${nameOf(event.player)}: ${event.action}...`,
         };
         entries.push(entry);
         active = entry;
@@ -163,21 +173,27 @@ export function buildActivityLog(
       }
 
       // -- action outcomes (§5). Positions are public; identities never appear. --
-      case 'checkedTheList':
+      case 'checkedTheList': {
+        const slot = centerSlotLabel(event.visualSlot);
         resolveWith(
           seq,
           event.player,
           'Check the List',
           `${nameOf(event.player)} checked their own card${publicSlotSuffix(event.visualSlot)}.`,
+          slot ? `${nameOf(event.player)} checked ${slot}.` : `${nameOf(event.player)} checked a card.`,
           { kind: 'focus', slots: [publicSlotVisual(event.player, event.slot, event.visualSlot, 'focus')] },
         );
         return;
+      }
       case 'knockItOutPeeked': {
         // Peeked, decision still pending — keep the entry pending (unresolved).
         activeKnockSlot = publicSlotVisual(event.player, event.slot, event.visualSlot, 'focus');
         if (active) {
           active.seq = seq;
           active.text = `${nameOf(event.player)} is deciding on their card${activitySlotSuffix(activeKnockSlot)}…`;
+          active.centerText = activeKnockSlot.space === 'visual'
+            ? `${nameOf(event.player)} is choosing ${slotLabel(activeKnockSlot.slot)}...`
+            : `${nameOf(event.player)} is choosing...`;
           active.visual = { kind: 'focus', slots: [activeKnockSlot] };
         } else {
           const entry: ActivityEntry = {
@@ -189,6 +205,9 @@ export function buildActivityLog(
             isAction: true,
             spotlight: true,
             text: `${nameOf(event.player)} is deciding on their card${activitySlotSuffix(activeKnockSlot)}…`,
+            centerText: activeKnockSlot.space === 'visual'
+              ? `${nameOf(event.player)} is choosing ${slotLabel(activeKnockSlot.slot)}...`
+              : `${nameOf(event.player)} is choosing...`,
             visual: { kind: 'focus', slots: [activeKnockSlot] },
           };
           entries.push(entry);
@@ -198,23 +217,42 @@ export function buildActivityLog(
       }
       case 'knockedOut':
         // §9.5: the self-discard is face-up on DONE, so its name is public.
-        resolveWith(seq, event.player, 'Knock It Out', `${nameOf(event.player)} knocked out their ${event.card.name}.`);
+        resolveWith(
+          seq,
+          event.player,
+          'Knock It Out',
+          `${nameOf(event.player)} knocked out their ${event.card.name}.`,
+          `${nameOf(event.player)} discarded ${event.card.name}.`,
+        );
         return;
       case 'knockItOutKept': {
         const where = activitySlotSuffix(activeKnockSlot);
+        const centerWhere = activeKnockSlot?.space === 'visual' ? slotLabel(activeKnockSlot.slot) : null;
         const visual = activeKnockSlot === null
           ? undefined
           : { kind: 'focus' as const, slots: [activeKnockSlot] };
-        resolveWith(seq, event.player, 'Knock It Out', `${nameOf(event.player)} peeked and kept their card${where}.`, visual);
+        resolveWith(
+          seq,
+          event.player,
+          'Knock It Out',
+          `${nameOf(event.player)} peeked and kept their card${where}.`,
+          centerWhere ? `${nameOf(event.player)} kept ${centerWhere}.` : `${nameOf(event.player)} kept the card.`,
+          visual,
+        );
         return;
       }
-      case 'traded':
+      case 'traded': {
         // Blind swap: positions only, no cards named (§5 "No peeking").
+        const mySlot = centerSlotLabel(event.myVisualSlot);
+        const opponentSlot = centerSlotLabel(event.opponentVisualSlot);
         resolveWith(
           seq,
           event.player,
           "Let's Trade",
           `${nameOf(event.player)} blind-swapped their card${publicSlotSuffix(event.myVisualSlot)} with ${nameOf(event.opponentId)}'s${publicSlotSuffix(event.opponentVisualSlot)}.`,
+          mySlot && opponentSlot
+            ? `${nameOf(event.player)} swapped ${mySlot} with ${nameOf(event.opponentId)}'s ${opponentSlot}.`
+            : `${nameOf(event.player)} swapped with ${nameOf(event.opponentId)}.`,
           {
             kind: 'swap',
             slots: [
@@ -224,12 +262,18 @@ export function buildActivityLog(
           },
         );
         return;
-      case 'switcherood':
+      }
+      case 'switcherood': {
+        const aSlot = centerSlotLabel(event.aVisualSlot);
+        const bSlot = centerSlotLabel(event.bVisualSlot);
         resolveWith(
           seq,
           event.player,
           'Switcheroo',
           `${nameOf(event.player)} switched ${nameOf(event.a)}'s card${publicSlotSuffix(event.aVisualSlot)} with ${nameOf(event.b)}'s${publicSlotSuffix(event.bVisualSlot)}.`,
+          aSlot && bSlot
+            ? `${nameOf(event.player)} swapped ${nameOf(event.a)}'s ${aSlot} with ${nameOf(event.b)}'s ${bSlot}.`
+            : `${nameOf(event.player)} swapped ${nameOf(event.a)} and ${nameOf(event.b)}.`,
           {
             kind: 'swap',
             slots: [
@@ -239,45 +283,74 @@ export function buildActivityLog(
           },
         );
         return;
-      case 'snooped':
+      }
+      case 'snooped': {
         // Actor + target + public slot are visible; the face went only to the
         // actor via a private `peek` event (never through this log).
+        const slot = centerSlotLabel(event.visualSlot);
         resolveWith(
           seq,
           event.player,
           'Snoop',
           `${nameOf(event.player)} snooped ${nameOf(event.targetId)}'s card${publicSlotSuffix(event.visualSlot)}.`,
+          slot
+            ? `${nameOf(event.player)} snooped on ${nameOf(event.targetId)}'s ${slot}.`
+            : `${nameOf(event.player)} snooped on ${nameOf(event.targetId)}.`,
           { kind: 'focus', slots: [publicSlotVisual(event.targetId, event.slot, event.visualSlot, 'focus')] },
         );
         return;
-      case 'notMyJobbed':
+      }
+      case 'notMyJobbed': {
+        const fromSlot = centerSlotLabel(event.fromVisualSlot);
+        const toSlot = centerSlotLabel(event.toVisualSlot);
         resolveWith(
           seq,
           event.player,
           'Not My Job',
           `${nameOf(event.player)} moved a card from ${nameOf(event.fromId)}${publicSlotSuffix(event.fromVisualSlot)} to ${nameOf(event.toId)}${publicSlotSuffix(event.toVisualSlot)}.`,
+          fromSlot && toSlot
+            ? `${nameOf(event.player)} moved ${nameOf(event.fromId)}'s ${fromSlot} to ${nameOf(event.toId)}'s ${toSlot}.`
+            : `${nameOf(event.player)} moved ${nameOf(event.fromId)}'s card to ${nameOf(event.toId)}.`,
           {
             kind: 'move',
             slots: [publicSlotVisual(event.toId, event.toSlot, event.toVisualSlot, 'target')],
           },
         );
         return;
-      case 'landlordsNoticed':
+      }
+      case 'landlordsNoticed': {
         // §5 "No one sees it": we name the recipient + public slot, never the card.
+        const slot = centerSlotLabel(event.visualSlot);
         resolveWith(
           seq,
           event.player,
           "Landlord's Notice",
           `${nameOf(event.player)} slid a face-down card onto ${nameOf(event.targetId)}'s list${publicSlotSuffix(event.visualSlot)}.`,
+          slot
+            ? `${nameOf(event.player)} gave ${nameOf(event.targetId)} a card at ${slot}.`
+            : `${nameOf(event.player)} gave ${nameOf(event.targetId)} a card.`,
           { kind: 'move', slots: [publicSlotVisual(event.targetId, event.slot, event.visualSlot, 'target')] },
         );
         return;
+      }
       case 'imBusied':
-        resolveWith(seq, event.player, "I'm Busy", `${nameOf(event.player)} played "I'm Busy" — ${nameOf(event.targetId)}'s next turn is skipped.`);
+        resolveWith(
+          seq,
+          event.player,
+          "I'm Busy",
+          `${nameOf(event.player)} played "I'm Busy" — ${nameOf(event.targetId)}'s next turn is skipped.`,
+          `${nameOf(event.player)} skipped ${nameOf(event.targetId)}'s next turn.`,
+        );
         return;
       case 'actionCancelled':
         // Also the server-timeout path for an unresolved action (round.ts).
-        resolveWith(seq, event.player, event.action, `${nameOf(event.player)} didn't play ${event.action}.`);
+        resolveWith(
+          seq,
+          event.player,
+          event.action,
+          `${nameOf(event.player)} didn't play ${event.action}.`,
+          `${nameOf(event.player)} skipped ${event.action}.`,
+        );
         return;
 
       // -- everything else: standalone log lines (no spotlight) --
@@ -289,6 +362,7 @@ export function buildActivityLog(
             seq,
             actor: line.actor,
             text: line.text,
+            centerText: line.centerText,
             status: 'resolved',
             isAction: false,
             spotlight: isTableActivitySpotlightEventType(event.type),
@@ -338,26 +412,36 @@ export function isTableHandoffBlocked(
 function describeStandalone(
   event: EngineEvent,
   nameOf: NameOf,
-): { actor: PlayerId | null; text: string; visual?: ActivityVisual } | null {
+): { actor: PlayerId | null; text: string; centerText?: string; visual?: ActivityVisual } | null {
   switch (event.type) {
     case 'drew':
       return { actor: event.player, text: `${nameOf(event.player)} drew a card.` };
-    case 'kept':
+    case 'kept': {
+      const slot = centerSlotLabel(event.visualSlot);
       return {
         actor: event.player,
         text: `${nameOf(event.player)} kept the drawn card${publicSlotSuffix(event.visualSlot)}.`,
+        centerText: slot
+          ? `${nameOf(event.player)} kept the card at ${slot}.`
+          : `${nameOf(event.player)} kept the card.`,
         visual: { kind: 'focus', slots: [publicSlotVisual(event.player, event.slot, event.visualSlot, 'target')] },
       };
+    }
     case 'discarded':
       // The discarded card is face-up on DONE — its name is public (§4A).
       return { actor: event.player, text: `${nameOf(event.player)} discarded ${event.card.name} to DONE.` };
-    case 'tookFromDone':
+    case 'tookFromDone': {
       // The taken card was the public DONE top; its name is already known (§4B).
+      const slot = centerSlotLabel(event.visualSlot);
       return {
         actor: event.player,
         text: `${nameOf(event.player)} took ${event.taken.name} from DONE${publicSlotSuffix(event.visualSlot)}.`,
+        centerText: slot
+          ? `${nameOf(event.player)} took ${event.taken.name} from DONE at ${slot}.`
+          : `${nameOf(event.player)} took ${event.taken.name} from DONE.`,
         visual: { kind: 'move', slots: [publicSlotVisual(event.player, event.slot, event.visualSlot, 'target')] },
       };
+    }
     case 'notMeCalled':
       return { actor: event.caller, text: `${nameOf(event.caller)} called "NOT ME!"` };
     case 'slapCorrect':
@@ -377,13 +461,18 @@ function describeStandalone(
       };
     case 'slapTooLate':
       return { actor: event.player, text: `${nameOf(event.player)} was a split second too late.` };
-    case 'giftGiven':
+    case 'giftGiven': {
       // §9.7: the gift is face-down; only the fact + recipient are public.
+      const slot = centerSlotLabel(event.toVisualSlot);
       return {
         actor: event.from,
         text: `${nameOf(event.from)} handed ${nameOf(event.to)} a card, face-down${publicSlotSuffix(event.toVisualSlot)}.`,
+        centerText: slot
+          ? `${nameOf(event.from)} gave ${nameOf(event.to)} a card at ${slot}.`
+          : `${nameOf(event.from)} gave ${nameOf(event.to)} a card.`,
         visual: { kind: 'move', slots: [publicSlotVisual(event.to, event.toSlot, event.toVisualSlot, 'target')] },
       };
+    }
     case 'turnSkipped':
       return { actor: event.player, text: `${nameOf(event.player)}'s turn was skipped.` };
     case 'deckReshuffled':
