@@ -3,7 +3,7 @@
 // Shared table feedback for played actions (issue #30):
 //
 //  - ActionAnnouncement: a privacy-safe spotlight near the center table. On
-//    `actionStarted` it shows "X is playing Y…"; when the public outcome lands
+//    `actionStarted` it shows concise visual copy; when the public outcome lands
 //    it updates the SAME line, stays visible for seven seconds, then fades. It is the only
 //    aria-live region here (polite + atomic) so screen readers hear a single,
 //    restrained start/outcome update — not every draw and discard.
@@ -69,7 +69,10 @@ export function ActionAnnouncement({ entry }: { entry: ActivityEntry | null }) {
     >
       <span className="action-announce-dot" aria-hidden />
       <ActivityMotion visual={entry.visual} />
-      <span className="action-announce-text">{entry.text}</span>
+      <span className="action-announce-text" aria-hidden>
+        {entry.centerText ?? entry.text}
+      </span>
+      <span className="action-announce-sr">{entry.text}</span>
     </div>
   );
 }
