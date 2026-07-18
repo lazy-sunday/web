@@ -26,7 +26,7 @@ describe('taking a turn (§4)', () => {
     expect(r.state.phase).toBe('turn');
   });
 
-  it('A: draw and keep reports the visual table slot when gaps compact the list', () => {
+  it('A: draw and keep treats the command slot as the visual table slot after gaps', () => {
     const s = makeRound({
       players: [
         { id: 'a', list: ['Nap', 'Vacuum the Living Room', 'Feed the Cat'] },
@@ -37,12 +37,39 @@ describe('taking a turn (§4)', () => {
     const drawn = ok(applyCommand(s, { type: 'draw', player: 'a' })).state;
     player(drawn, 'a').slotPositions = [1, 3, 5];
 
-    const r = ok(applyCommand(drawn, { type: 'keepDrawn', player: 'a', slot: 2 }));
+    const r = ok(applyCommand(drawn, { type: 'keepDrawn', player: 'a', slot: 5 }));
 
     const kept = evt(r.events, 'kept');
     expect(kept.slot).toBe(2);
     expect(kept.visualSlot).toBe(5);
+    expect(player(r.state, 'a').list.map((c) => c.name)).toEqual(['Nap', 'Vacuum the Living Room', 'Fold the Laundry']);
     expect(player(r.state, 'a').slotPositions).toEqual([1, 3, 5]);
+  });
+
+  it('A: draw and keep on visual slot 5 stays in visual slot 5 after the second card was discarded', () => {
+    const s = makeRound({
+      players: [
+        { id: 'a', list: ['Nap', 'Vacuum the Living Room', 'Feed the Cat', 'Water the Plants', 'Take Out the Trash'] },
+        { id: 'b', list: ['Fold the Laundry'] },
+      ],
+      deck: ['Snoop'],
+    });
+    const drawn = ok(applyCommand(s, { type: 'draw', player: 'a' })).state;
+    player(drawn, 'a').slotPositions = [0, 2, 3, 4, 5];
+
+    const r = ok(applyCommand(drawn, { type: 'keepDrawn', player: 'a', slot: 4 }));
+
+    const kept = evt(r.events, 'kept');
+    expect(kept.slot).toBe(3);
+    expect(kept.visualSlot).toBe(4);
+    expect(player(r.state, 'a').list.map((c) => c.name)).toEqual([
+      'Nap',
+      'Vacuum the Living Room',
+      'Feed the Cat',
+      'Snoop',
+      'Take Out the Trash',
+    ]);
+    expect(player(r.state, 'a').slotPositions).toEqual([0, 2, 3, 4, 5]);
   });
 
   it('A: draw and discard a chore — straight to DONE, no action possible', () => {

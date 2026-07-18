@@ -483,7 +483,7 @@ function SetupPeekPanel({
                   ? `Your card, slot ${slot.visualSlot + 1}, revealed: ${peeked.name}`
                   : `Your card, slot ${slot.visualSlot + 1}, face down${isSelected ? ', selected for peek' : ''}`
               }
-              onClick={() => peekAtSlot(slot.cardSlot!)}
+              onClick={() => peekAtSlot(slot.visualSlot)}
             >
               {peeked ? <CardFace name={peeked.name as CardName} /> : <CardBack />}
             </button>
@@ -570,7 +570,7 @@ function OpponentRow({
             return <span key={slot.visualSlot} className="opp-slot slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
           }
           const peeked = peeks.peekAt(playerId, slot.cardSlot);
-          const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === slot.cardSlot;
+          const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === slot.visualSlot;
           const activityRole = activityRoleForSlot(activityVisual, playerId, slot.visualSlot);
           return (
             <button
@@ -587,7 +587,7 @@ function OpponentRow({
                   : `${name}'s card, slot ${slot.visualSlot + 1}, face down${canSelectSlapTarget ? ' — select for Done it!' : ''}`
               }
               aria-pressed={canSelectSlapTarget ? selected : undefined}
-              onClick={() => onSelectSlapTarget(playerId, slot.cardSlot!)}
+              onClick={() => onSelectSlapTarget(playerId, slot.visualSlot)}
             >
               {peeked ? <CardFace name={peeked.name as CardName} className="card-img-sm" /> : <CardBack className="card-img-sm" />}
             </button>
@@ -764,7 +764,7 @@ function MyRow({
             return <span key={slot.visualSlot} className="slot-gap slot-gap-lg" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
           }
           const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
-          const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === slot.cardSlot;
+          const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === slot.visualSlot;
           const slapPickable = !pickable && canSelectSlapTarget;
           const activityRole = activityRoleForSlot(activityVisual, me.playerId, slot.visualSlot);
           return (
@@ -775,7 +775,7 @@ function MyRow({
               data-pickable={pickable}
               data-slap-pickable={slapPickable}
               data-slap-selected={selected}
-              data-just-placed={justPlacedSlot === slot.cardSlot}
+              data-just-placed={justPlacedSlot === slot.visualSlot}
               data-activity-role={activityRole}
               disabled={pickable ? inFlight : !slapPickable}
               aria-pressed={slapPickable ? selected : undefined}
@@ -786,9 +786,9 @@ function MyRow({
               }
               onClick={() => {
                 if (pickable) {
-                  onPickSlot(slot.cardSlot!);
+                  onPickSlot(slot.visualSlot);
                 } else if (slapPickable) {
-                  onSelectSlapTarget(me.playerId, slot.cardSlot!);
+                  onSelectSlapTarget(me.playerId, slot.visualSlot);
                 }
               }}
             >
@@ -909,7 +909,7 @@ function useJustPlacedSlot(events: Game['events'], myId: PlayerId | null): numbe
     if (!myId) return;
     for (const { event: ev } of newEvents) {
       if ((ev.type === 'kept' || ev.type === 'tookFromDone') && ev.player === myId) {
-        setSlot(ev.slot);
+        setSlot(ev.visualSlot ?? ev.slot);
         const t = setTimeout(() => setSlot(null), 240);
         return () => clearTimeout(t);
       }

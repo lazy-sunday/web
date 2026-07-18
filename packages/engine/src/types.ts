@@ -39,7 +39,7 @@ export interface PendingAction {
   card: Card;
   /** 'input' = waiting for target choice; 'knockItOutDecision' = peeked, may discard (§5). */
   step: 'input' | 'knockItOutDecision';
-  /** Knock It Out only: the slot that was peeked and may now be discarded. */
+  /** Knock It Out only: compact slot that was peeked and may now be discarded. */
   knockSlot?: number;
 }
 
@@ -92,6 +92,10 @@ export interface RoundState {
 
 // ---------------------------------------------------------------------------
 // Commands (player + server-driven inputs)
+//
+// Card-selection commands name visual table slots. The engine resolves them to
+// compact list indices internally so discarded-card gaps stay visible and
+// clickable.
 // ---------------------------------------------------------------------------
 
 export type ActionInput =
