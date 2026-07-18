@@ -4,7 +4,18 @@
 // §9.4 targeting rules are mirrored here ONLY so illegal taps can be disabled
 // client-side as a UX nicety.
 
-import type { ActionName, PlayerId } from '@lazy-sunday/engine';
+import type { ActionName, ActionUnavailableReason, PlayerId } from '@lazy-sunday/engine';
+
+export function unavailableActionMessage(reason: ActionUnavailableReason): string {
+  switch (reason) {
+    case 'needsTwoOtherPlayers':
+      return 'Bring more friends for more fun. This action needs at least 3 players.';
+    case 'callerLockLeavesTooFewTargets':
+      return '"NOT ME!" locked a list, so there are not two available players for this action.';
+    case 'notEnoughTargetCards':
+      return 'There are not enough cards among the available players for this action.';
+  }
+}
 
 /** One step in a guided action flow. Each step asks the player to tap either
  *  a player (opponent row / avatar) or a slot (their own row or an opponent's

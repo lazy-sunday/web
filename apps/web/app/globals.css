@@ -1606,6 +1606,13 @@ select {
   text-align: center;
 }
 
+.decision-unavailable-note {
+  color: var(--night-moon);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
 /* -- slot picker overlay (take from DONE) -- */
 
 .slot-picker-overlay {

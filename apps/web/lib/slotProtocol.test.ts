@@ -18,6 +18,7 @@ const view: RoundView = {
   ],
   mySetupPeekSlots: [],
   myDrawnCard: null,
+  myDrawnActionUnavailableReason: null,
   pendingAction: null,
   pendingGift: null,
   result: null,
