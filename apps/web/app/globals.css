@@ -1752,6 +1752,13 @@ select {
   padding: 4px 0;
 }
 
+.action-modal-reveal-status {
+  color: var(--night-moon);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 .action-modal-actions {
   display: flex;
   flex-direction: column;

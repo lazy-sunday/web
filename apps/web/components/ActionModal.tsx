@@ -12,9 +12,16 @@
 // performing an action is always optional (§5).
 
 import { useEffect, useState } from 'react';
-import type { CardName, PlayerId } from '@lazy-sunday/engine';
+import type { Card, CardName, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
 import type { usePeeks } from '../lib/usePeeks';
+import { commandErrorMatches } from '../lib/commandPending';
+import { useCountdown } from '../lib/useCountdown';
+import {
+  findSnoopReveal,
+  SNOOP_REVEAL_MS,
+  type PendingSnoopReveal,
+} from '../lib/snoopReveal';
 import {
   ACTION_FLOWS,
   buildActionInput,
@@ -42,6 +49,13 @@ export function ActionModal({
   const [stepIndex, setStepIndex] = useState(0);
   const [picks, setPicks] = useState<ActionPicks>({});
   const [sending, setSending] = useState(false);
+  const [pendingSnoop, setPendingSnoop] = useState<PendingSnoopReveal | null>(null);
+  const [snoopReveal, setSnoopReveal] = useState<{
+    owner: PlayerId;
+    card: Card;
+    expiresAt: number;
+  } | null>(null);
+  const snoopSeconds = useCountdown(snoopReveal?.expiresAt ?? null);
 
   const pa = view?.pendingAction;
   const isMine = !!pa && !!me && pa.actor === me.playerId;
@@ -75,6 +89,77 @@ export function ActionModal({
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMine, sending]);
+
+  // The action state clears as soon as Snoop resolves, but its private peek
+  // arrives in the same server response. Match that response to the submitted
+  // request and keep the result in this modal instead of sending the player
+  // back to the table to hunt for the revealed slot.
+  useEffect(() => {
+    if (!pendingSnoop) return;
+    if (game.status !== 'open') {
+      setPendingSnoop(null);
+      setSending(false);
+      return;
+    }
+    if (commandErrorMatches(pendingSnoop.requestId, game.lastError)) {
+      setPendingSnoop(null);
+      setSending(false);
+      return;
+    }
+    const matched = findSnoopReveal(game.events, pendingSnoop, view);
+    if (!matched) return;
+    setSnoopReveal({
+      owner: matched.owner,
+      card: matched.card,
+      expiresAt: Date.now() + SNOOP_REVEAL_MS,
+    });
+    setPendingSnoop(null);
+    setSending(false);
+  }, [game.events, game.lastError, game.status, pendingSnoop, view]);
+
+  useEffect(() => {
+    if (!snoopReveal) return;
+    const expiresAt = snoopReveal.expiresAt;
+    const timer = window.setTimeout(() => {
+      setSnoopReveal((current) => (current?.expiresAt === expiresAt ? null : current));
+    }, Math.max(0, expiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [snoopReveal]);
+
+  if (snoopReveal) {
+    return (
+      <ModalScrim label={`Snoop revealed ${nameOf(snoopReveal.owner)}'s card`}>
+        <div className="action-modal night">
+          <h2 className="action-modal-title">Snoop</h2>
+          <p className="action-modal-prompt">You revealed {nameOf(snoopReveal.owner)}&apos;s card.</p>
+          <div className="action-modal-peek">
+            <CardFace name={snoopReveal.card.name as CardName} className="card-img-lg" />
+          </div>
+          <p
+            className="action-modal-reveal-status"
+            role="timer"
+            aria-label={`Returning to the table in ${snoopSeconds ?? 5} seconds`}
+          >
+            Returning to the table in <strong>{snoopSeconds ?? 5}s</strong>
+          </p>
+        </div>
+      </ModalScrim>
+    );
+  }
+
+  if (pendingSnoop) {
+    return (
+      <ModalScrim label="Snoop is revealing the selected card">
+        <div className="action-modal night" aria-busy="true">
+          <h2 className="action-modal-title">Snoop</h2>
+          <p className="action-modal-prompt">Revealing {nameOf(pendingSnoop.owner)}&apos;s card...</p>
+          <div className="action-modal-peek">
+            <CardBack className="card-img-lg" />
+          </div>
+        </div>
+      </ModalScrim>
+    );
+  }
 
   if (!view || !me || !pa || !isMine) return null;
 
@@ -140,7 +225,18 @@ export function ActionModal({
     setPicks(nextPicks);
     const isLast = stepIndex === flow.steps.length - 1;
     if (isLast) {
-      const input = buildActionInput(pa!.action, nextPicks);
+      const action = pa!.action;
+      const input = buildActionInput(action, nextPicks);
+      if (action === 'Snoop') {
+        const owner = nextPicks['targetId'];
+        const visualSlot = nextPicks['slot'];
+        if (typeof owner !== 'string' || typeof visualSlot !== 'number' || sending) return;
+        setSending(true);
+        const afterSequence = game.events.at(-1)?.sequence ?? 0;
+        const requestId = game.sendCommand({ type: 'actionInput', input: input as never });
+        setPendingSnoop({ actor: myId, owner, visualSlot, afterSequence, requestId });
+        return;
+      }
       send(() => game.sendCommand({ type: 'actionInput', input: input as never }));
     } else {
       setStepIndex((i) => i + 1);
