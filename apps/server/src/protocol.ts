@@ -6,7 +6,7 @@
 // never appear except where the engine itself grants them (peek/drawnCard events
 // addressed to one player, and public face-up moments).
 
-import type { Command, EngineEvent, PlayerId, SessionEvent } from '@lazy-sunday/engine';
+import type { ActionInput, Command, EngineEvent, PlayerId, SessionEvent } from '@lazy-sunday/engine';
 import type { RoundView } from '@lazy-sunday/engine';
 
 /** Shared duration for the center-table activity spotlight. The authoritative
@@ -104,7 +104,51 @@ export type RoundRestartVoteUpdate =
  *  a client-supplied `player` field is ignored/never trusted. `forceSkipTurn`
  *  is server-driven only and not part of the client vocabulary. */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
-export type ClientCommand = DistributiveOmit<Exclude<Command, { type: 'forceSkipTurn' }>, 'player'>;
+export type VisualClientCommand = DistributiveOmit<Exclude<Command, { type: 'forceSkipTurn' }>, 'player'>;
+
+type NonSlotClientCommand = Exclude<
+  VisualClientCommand,
+  { type: 'setupPeek' | 'keepDrawn' | 'takeFromDone' | 'slap' | 'giveCard' | 'actionInput' }
+>;
+type NonSlotActionInput = Extract<ActionInput, { action: "Landlord's Notice" | "I'm Busy" }>;
+
+/** Wire commands keep compact slot fields for pre-#39 servers and add explicit
+ * visual fields for current servers. This makes rolling web/server deploys safe
+ * in both directions. */
+export type ClientCommand =
+  | NonSlotClientCommand
+  | { type: 'setupPeek' | 'keepDrawn' | 'takeFromDone' | 'giveCard'; slot: number; visualSlot?: number }
+  | { type: 'slap'; owner: PlayerId; slot: number; visualSlot?: number; expectedTopId?: string }
+  | { type: 'actionInput'; input: WireActionInput };
+
+export type WireActionInput =
+  | NonSlotActionInput
+  | { action: 'Check the List' | 'Knock It Out'; slot: number; visualSlot?: number }
+  | {
+      action: "Let's Trade";
+      mySlot: number;
+      myVisualSlot?: number;
+      opponentId: PlayerId;
+      opponentSlot: number;
+      opponentVisualSlot?: number;
+    }
+  | {
+      action: 'Switcheroo';
+      a: PlayerId;
+      aSlot: number;
+      aVisualSlot?: number;
+      b: PlayerId;
+      bSlot: number;
+      bVisualSlot?: number;
+    }
+  | { action: 'Snoop'; targetId: PlayerId; slot: number; visualSlot?: number }
+  | {
+      action: 'Not My Job';
+      fromId: PlayerId;
+      fromSlot: number;
+      fromVisualSlot?: number;
+      toId: PlayerId;
+    };
 
 export type ToggleKey = keyof RoomToggles;
 
