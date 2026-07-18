@@ -283,7 +283,7 @@ function SlotPicker({
             data-pickable
             disabled={disabled}
             aria-label={peeked ? `Card revealed to you: ${peeked.name}` : `${ownerName} card, slot ${slot.visualSlot + 1}, face down`}
-            onClick={() => onPick(slot.cardSlot!)}
+            onClick={() => onPick(slot.visualSlot)}
           >
             {peeked ? <CardFace name={peeked.name as CardName} /> : <CardBack />}
           </button>

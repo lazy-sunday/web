@@ -93,21 +93,22 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
     case 'setupPeek': {
       if (state.phase !== 'setupPeek') return fail('wrongPhase', 'setup peek is over');
       if (player.setupPeeked) return fail('alreadyPeeked', 'your setup peek has ended');
-      if (!isSlot(player.list, cmd.slot)) {
+      const slot = compactSlotAtVisual(player, cmd.slot);
+      if (slot === null) {
         return fail('invalidSlot', 'pick a card from your own list');
       }
-      if (player.setupPeekSlots.includes(cmd.slot)) {
+      if (player.setupPeekSlots.includes(slot)) {
         return fail('invalidSlot', 'pick a different card');
       }
       if (player.setupPeekSlots.length >= 2) {
         return fail('alreadyPeeked', 'you already selected two cards (§3.3)');
       }
-      player.setupPeekSlots.push(cmd.slot);
+      player.setupPeekSlots.push(slot);
       events.push({
         type: 'peek',
         to: player.id,
         reason: 'setup',
-        reveals: [{ owner: player.id, slot: cmd.slot, card: player.list[cmd.slot]! }],
+        reveals: [{ owner: player.id, slot, card: player.list[slot]! }],
       });
       return { ok: true, state, events };
     }
@@ -140,16 +141,17 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
         endTurn(state, events);
         return { ok: true, state, events };
       }
-      if (!isSlot(player.list, cmd.slot)) return fail('invalidSlot', 'no card in that slot');
+      const slot = compactSlotAtVisual(player, cmd.slot);
+      if (slot === null) return fail('invalidSlot', 'no card in that slot');
       // §4A: place it face-down into your list, discard the replaced card face-up.
-      const replaced = player.list[cmd.slot]!;
-      const visualSlot = visualSlotAt(player, cmd.slot);
-      player.list[cmd.slot] = drawn;
+      const replaced = player.list[slot]!;
+      const visualSlot = visualSlotAt(player, slot);
+      player.list[slot] = drawn;
       state.done.push(replaced);
       state.drawnCard = null;
       // Replaced-card discards NEVER trigger actions (§4: "Actions trigger ONLY on
       // cards drawn from the deck" — i.e. the drawn card itself, discarded).
-      events.push({ type: 'kept', player: player.id, slot: cmd.slot, visualSlot, discarded: replaced });
+      events.push({ type: 'kept', player: player.id, slot, visualSlot, discarded: replaced });
       endTurn(state, events);
       return { ok: true, state, events };
     }
@@ -218,15 +220,16 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
         // §4B requires swapping the replaced card out; with no cards there is no swap.
         return fail('emptyList', 'you have no card to swap — draw from the deck instead');
       }
-      if (!isSlot(player.list, cmd.slot)) return fail('invalidSlot', 'no card in that slot');
+      const slot = compactSlotAtVisual(player, cmd.slot);
+      if (slot === null) return fail('invalidSlot', 'no card in that slot');
       if (state.done.length === 0) return fail('wrongPhase', 'the DONE pile is empty');
       // §4B: must swap it in; taking never triggers an action.
       const taken = state.done.pop()!;
-      const replaced = player.list[cmd.slot]!;
-      const visualSlot = visualSlotAt(player, cmd.slot);
-      player.list[cmd.slot] = taken;
+      const replaced = player.list[slot]!;
+      const visualSlot = visualSlotAt(player, slot);
+      player.list[slot] = taken;
       state.done.push(replaced);
-      events.push({ type: 'tookFromDone', player: player.id, slot: cmd.slot, visualSlot, taken, discarded: replaced });
+      events.push({ type: 'tookFromDone', player: player.id, slot, visualSlot, taken, discarded: replaced });
       endTurn(state, events);
       return { ok: true, state, events };
     }
@@ -259,9 +262,10 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
     case 'giveCard': {
       const gift = state.pendingGift;
       if (!gift || gift.from !== player.id) return fail('wrongPhase', 'you owe no card');
-      if (!isSlot(player.list, cmd.slot)) return fail('invalidSlot', 'no card in that slot');
+      const slot = compactSlotAtVisual(player, cmd.slot);
+      if (slot === null) return fail('invalidSlot', 'no card in that slot');
       // §6 / §9.7: the giver chooses; passed face-down; receiver may not look.
-      const { card } = removeCard(player, cmd.slot);
+      const { card } = removeCard(player, slot);
       const receiver = state.players.find((p) => p.id === gift.to)!;
       const at = insertCardAtVisualSlot(receiver, gift.insertIndex, card);
       state.pendingGift = null;
@@ -305,20 +309,22 @@ function handleActionInput(
   switch (input.action) {
     case 'Check the List': {
       // §5: peek at ONE of your own cards.
-      if (!isSlot(me.list, input.slot)) return fail('invalidSlot', 'no card in that slot');
-      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot: input.slot, card: me.list[input.slot]! }] });
-      events.push({ type: 'checkedTheList', player: playerId, slot: input.slot, visualSlot: visualSlotAt(me, input.slot) });
+      const slot = compactSlotAtVisual(me, input.slot);
+      if (slot === null) return fail('invalidSlot', 'no card in that slot');
+      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot, card: me.list[slot]! }] });
+      events.push({ type: 'checkedTheList', player: playerId, slot, visualSlot: visualSlotAt(me, slot) });
       finishAction(state, events);
       return { ok: true, state, events };
     }
 
     case 'Knock It Out': {
       // §5: peek at ONE of your own cards; you MAY then discard it (any value).
-      if (!isSlot(me.list, input.slot)) return fail('invalidSlot', 'no card in that slot');
-      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot: input.slot, card: me.list[input.slot]! }] });
-      events.push({ type: 'knockItOutPeeked', player: playerId, slot: input.slot, visualSlot: visualSlotAt(me, input.slot) });
+      const slot = compactSlotAtVisual(me, input.slot);
+      if (slot === null) return fail('invalidSlot', 'no card in that slot');
+      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot, card: me.list[slot]! }] });
+      events.push({ type: 'knockItOutPeeked', player: playerId, slot, visualSlot: visualSlotAt(me, slot) });
       pa.step = 'knockItOutDecision';
-      pa.knockSlot = input.slot;
+      pa.knockSlot = slot;
       return { ok: true, state, events }; // stays in 'action' until the decision
     }
 
@@ -327,21 +333,23 @@ function handleActionInput(
       const opp = byId(input.opponentId);
       if (!opp || opp.id === playerId) return fail('invalidTarget', 'pick an opponent');
       if (callerLocked(opp.id)) return fail('callerLocked', "the caller's list is locked (§7)");
-      if (!isSlot(me.list, input.mySlot) || !isSlot(opp.list, input.opponentSlot)) {
+      const mySlot = compactSlotAtVisual(me, input.mySlot);
+      const opponentSlot = compactSlotAtVisual(opp, input.opponentSlot);
+      if (mySlot === null || opponentSlot === null) {
         return fail('invalidSlot', 'both trade slots must hold a card');
       }
-      const mine = me.list[input.mySlot]!;
-      const myVisualSlot = visualSlotAt(me, input.mySlot);
-      const opponentVisualSlot = visualSlotAt(opp, input.opponentSlot);
-      me.list[input.mySlot] = opp.list[input.opponentSlot]!;
-      opp.list[input.opponentSlot] = mine;
+      const mine = me.list[mySlot]!;
+      const myVisualSlot = visualSlotAt(me, mySlot);
+      const opponentVisualSlot = visualSlotAt(opp, opponentSlot);
+      me.list[mySlot] = opp.list[opponentSlot]!;
+      opp.list[opponentSlot] = mine;
       events.push({
         type: 'traded',
         player: playerId,
-        mySlot: input.mySlot,
+        mySlot,
         myVisualSlot,
         opponentId: opp.id,
-        opponentSlot: input.opponentSlot,
+        opponentSlot,
         opponentVisualSlot,
       });
       finishAction(state, events);
@@ -357,22 +365,24 @@ function handleActionInput(
         return fail('invalidTarget', 'Switcheroo targets two OTHER players (§9.4)');
       }
       if (callerLocked(a.id) || callerLocked(b.id)) return fail('callerLocked', "the caller's list is locked (§7)");
-      if (!isSlot(a.list, input.aSlot) || !isSlot(b.list, input.bSlot)) {
+      const aSlot = compactSlotAtVisual(a, input.aSlot);
+      const bSlot = compactSlotAtVisual(b, input.bSlot);
+      if (aSlot === null || bSlot === null) {
         return fail('invalidSlot', 'both slots must hold a card');
       }
-      const cardA = a.list[input.aSlot]!;
-      const aVisualSlot = visualSlotAt(a, input.aSlot);
-      const bVisualSlot = visualSlotAt(b, input.bSlot);
-      a.list[input.aSlot] = b.list[input.bSlot]!;
-      b.list[input.bSlot] = cardA;
+      const cardA = a.list[aSlot]!;
+      const aVisualSlot = visualSlotAt(a, aSlot);
+      const bVisualSlot = visualSlotAt(b, bSlot);
+      a.list[aSlot] = b.list[bSlot]!;
+      b.list[bSlot] = cardA;
       events.push({
         type: 'switcherood',
         player: playerId,
         a: a.id,
-        aSlot: input.aSlot,
+        aSlot,
         aVisualSlot,
         b: b.id,
-        bSlot: input.bSlot,
+        bSlot,
         bVisualSlot,
       });
       finishAction(state, events);
@@ -384,9 +394,10 @@ function handleActionInput(
       // only Trade/Switcheroo/Not My Job/Landlord's Notice and quick-discards.)
       const target = byId(input.targetId);
       if (!target || target.id === playerId) return fail('invalidTarget', 'Snoop targets an opponent');
-      if (!isSlot(target.list, input.slot)) return fail('invalidSlot', 'no card in that slot');
-      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: target.id, slot: input.slot, card: target.list[input.slot]! }] });
-      events.push({ type: 'snooped', player: playerId, targetId: target.id, slot: input.slot, visualSlot: visualSlotAt(target, input.slot) });
+      const slot = compactSlotAtVisual(target, input.slot);
+      if (slot === null) return fail('invalidSlot', 'no card in that slot');
+      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: target.id, slot, card: target.list[slot]! }] });
+      events.push({ type: 'snooped', player: playerId, targetId: target.id, slot, visualSlot: visualSlotAt(target, slot) });
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -400,14 +411,15 @@ function handleActionInput(
         return fail('invalidTarget', '"Not My Job" moves a card between two OTHER players (§9.4)');
       }
       if (callerLocked(from.id) || callerLocked(to.id)) return fail('callerLocked', "the caller's list is locked (§7)");
-      if (!isSlot(from.list, input.fromSlot)) return fail('invalidSlot', 'no card in that slot');
-      const { card, visualSlot: fromVisualSlot } = removeCard(from, input.fromSlot);
+      const fromSlot = compactSlotAtVisual(from, input.fromSlot);
+      if (fromSlot === null) return fail('invalidSlot', 'no card in that slot');
+      const { card, visualSlot: fromVisualSlot } = removeCard(from, fromSlot);
       const toSlot = appendCard(to, card);
       events.push({
         type: 'notMyJobbed',
         player: playerId,
         fromId: from.id,
-        fromSlot: input.fromSlot,
+        fromSlot,
         fromVisualSlot,
         toId: to.id,
         toSlot,
@@ -486,7 +498,8 @@ function handleSlap(
     return { ok: true, state, events };
   }
 
-  if (!isSlot(owner.list, cmd.slot)) return fail('invalidSlot', 'no card in that slot');
+  const slot = compactSlotAtVisual(owner, cmd.slot);
+  if (slot === null) return fail('invalidSlot', 'no card in that slot');
 
   const isOwn = owner.id === slapperId;
   if (!isOwn && slapper.list.length === 0) {
@@ -495,19 +508,19 @@ function handleSlap(
     return fail('cannotGift', 'you have no card to give — you can only slap your own cards');
   }
 
-  const card = owner.list[cmd.slot]!;
+  const card = owner.list[slot]!;
   if (card.name === top.name) {
     // Correct: the card stays discarded (face-up on DONE — identity now public).
-    const removed = removeCard(owner, cmd.slot);
+    const removed = removeCard(owner, slot);
     state.done.push(removed.card);
     if (isOwn) {
       // §6: your own card, correct — your list shrinks by one.
-      events.push({ type: 'slapCorrect', player: slapperId, owner: owner.id, slot: cmd.slot, card: removed.card, giftPending: false });
+      events.push({ type: 'slapCorrect', player: slapperId, owner: owner.id, slot, card: removed.card, giftPending: false });
     } else {
       // §6: an opponent's card, correct — you must immediately give them ONE of
       // your own cards (your choice, face-down) to fill the gap.
       state.pendingGift = { from: slapperId, to: owner.id, insertIndex: removed.visualSlot };
-      events.push({ type: 'slapCorrect', player: slapperId, owner: owner.id, slot: cmd.slot, card: removed.card, giftPending: true });
+      events.push({ type: 'slapCorrect', player: slapperId, owner: owner.id, slot, card: removed.card, giftPending: true });
     }
   } else {
     // §6 wrong: the slapped card returns face-down to its owner's list (it hit the
@@ -516,7 +529,7 @@ function handleSlap(
     // (a penalty draw is not one of the granted peeks).
     const penaltyAvailable = drawFromDeck(state, events);
     if (penaltyAvailable) appendCard(slapper, state.deck.pop()!);
-    events.push({ type: 'slapWrong', player: slapperId, owner: owner.id, slot: cmd.slot, card, penaltyDrawn: penaltyAvailable });
+    events.push({ type: 'slapWrong', player: slapperId, owner: owner.id, slot, card, penaltyDrawn: penaltyAvailable });
   }
   return { ok: true, state, events };
 }
@@ -666,6 +679,12 @@ function current(state: RoundState) {
 
 function isSlot(list: Card[], slot: number): boolean {
   return Number.isInteger(slot) && slot >= 0 && slot < list.length;
+}
+
+function compactSlotAtVisual(player: PlayerRoundState, visualSlot: number): number | null {
+  if (!Number.isInteger(visualSlot) || visualSlot < 0) return null;
+  const slot = player.slotPositions.indexOf(visualSlot);
+  return slot === -1 ? null : slot;
 }
 
 function visualSlotAt(player: PlayerRoundState, slot: number): number {

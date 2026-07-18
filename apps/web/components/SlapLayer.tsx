@@ -27,6 +27,7 @@ type Game = ReturnType<typeof useGameSocket>;
 
 export interface SlapTarget {
   owner: PlayerId;
+  /** Visual table slot, matching the labels shown around card gaps. */
   slot: number;
 }
 
@@ -169,7 +170,11 @@ export function SlapLayer({
   const canSlap = !locked && view.doneTop !== null;
   const selectedOwner = selectedTarget ? view.players.find((p) => p.id === selectedTarget.owner) : null;
   const selectedIsValid = Boolean(
-    selectedTarget && selectedOwner && selectedTarget.slot >= 0 && selectedTarget.slot < selectedOwner.listSize,
+    selectedTarget &&
+      selectedOwner &&
+      selectedTarget.slot >= 0 &&
+      selectedTarget.slot < selectedOwner.listSlots.length &&
+      selectedOwner.listSlots[selectedTarget.slot],
   );
 
   function fireSlap() {
@@ -332,7 +337,7 @@ function GiftPicker({ game }: { game: Game }) {
                   aria-label={`Give away card in slot ${slot.visualSlot + 1}`}
                   onClick={() => {
                     setSending(true);
-                    game.sendCommand({ type: 'giveCard', slot: slot.cardSlot! });
+                    game.sendCommand({ type: 'giveCard', slot: slot.visualSlot });
                   }}
                 >
                   <CardBack />
