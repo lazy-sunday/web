@@ -2,7 +2,8 @@
 // or an error, and never mutates its input. lazy-sunday-rules-v1.md is the spec;
 // section references (§) below quote it.
 
-import { buildDeck, type Card } from './cards.js';
+import { buildDeck, type ActionName, type Card } from './cards.js';
+import { actionUnavailableError, actionUnavailableReason } from './actionAvailability.js';
 import { shuffle } from './rng.js';
 import type {
   ActionInput,
@@ -163,6 +164,13 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
       if (cmd.withAction && drawn.kind !== 'action') {
         return fail('notAnAction', `${drawn.name} is a chore — it has no action`);
       }
+      if (cmd.withAction) {
+        const action = drawn.name as ActionName;
+        const unavailable = actionUnavailableReason(state, player.id, action);
+        if (unavailable) {
+          return fail('notPerformable', actionUnavailableError(action, unavailable));
+        }
+      }
       state.done.push(drawn);
       state.drawnCard = null;
       events.push({ type: 'discarded', player: player.id, card: drawn, withAction: cmd.withAction });
@@ -296,6 +304,10 @@ function handleActionInput(
   if (pa.step !== 'input') return fail('wrongAction', 'resolve the Knock It Out peek first');
   if (input.action !== pa.card.name) {
     return fail('wrongAction', `pending action is ${pa.card.name}, not ${input.action}`);
+  }
+  const unavailable = actionUnavailableReason(state, playerId, input.action);
+  if (unavailable) {
+    return fail('notPerformable', actionUnavailableError(input.action, unavailable));
   }
   const me = state.players.find((p) => p.id === playerId)!;
   const byId = (id: PlayerId) => state.players.find((p) => p.id === id);
