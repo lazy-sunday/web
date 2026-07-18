@@ -117,6 +117,7 @@ describe('setup peek (§3.3)', () => {
     const firstPeek = evt(first.events, 'peek');
     expect(firstPeek).toMatchObject({ to: 'a', reason: 'setup' });
     expect(firstPeek.reveals.map((x) => x.slot)).toEqual([0]);
+    expect(firstPeek.reveals.map((x) => x.visualSlot)).toEqual([0]);
     expect(firstPeek.reveals[0]!.card).toEqual(s.players[0]!.list[0]);
     expect(first.state.players[0]!.setupPeekSlots).toEqual([0]);
     expect(first.state.players[0]!.setupPeeked).toBe(false);
@@ -126,6 +127,7 @@ describe('setup peek (§3.3)', () => {
 
     const second = ok(applyCommand(first.state, { type: 'setupPeek', player: 'a', slot: 3 }));
     expect(evt(second.events, 'peek').reveals.map((x) => x.slot)).toEqual([3]);
+    expect(evt(second.events, 'peek').reveals.map((x) => x.visualSlot)).toEqual([3]);
     expect(second.state.players[0]!.setupPeekSlots).toEqual([0, 3]);
     expect(second.state.players[0]!.setupPeeked).toBe(false);
     expect(second.state.phase).toBe('setupPeek');

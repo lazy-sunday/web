@@ -35,7 +35,7 @@ export function GameTable({ game }: { game: Game }) {
   const { view, lobby, me, roundNumber, events } = game;
   // Peek display duration is decided by each peek event's own `reason`, not by
   // the live view phase — see usePeeks and issue #28.
-  const peeks = usePeeks(events, me?.playerId ?? null);
+  const peeks = usePeeks(events, me?.playerId ?? null, view);
   const sound = useSound();
   useGameSounds(events, me?.playerId ?? null, sound);
 
@@ -471,7 +471,7 @@ function SetupPeekPanel({
           if (!slot.occupied || slot.cardSlot === null) {
             return <span key={slot.visualSlot} className="slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
           }
-          const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
+          const peeked = me ? peeks.peekAt(me.playerId, slot.visualSlot) : null;
           const isSelected = selected.includes(slot.cardSlot);
           const disabled = windowEnded || inFlight || isSelected || selected.length >= 2;
           return (
@@ -573,7 +573,7 @@ function OpponentRow({
           if (!slot.occupied || slot.cardSlot === null) {
             return <span key={slot.visualSlot} className="opp-slot slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
           }
-          const peeked = peeks.peekAt(playerId, slot.cardSlot);
+          const peeked = peeks.peekAt(playerId, slot.visualSlot);
           const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === slot.visualSlot;
           const activityRole = activityRoleForSlot(activityVisual, playerId, slot.cardSlot, slot.visualSlot);
           return (
@@ -767,7 +767,7 @@ function MyRow({
           if (!slot.occupied || slot.cardSlot === null) {
             return <span key={slot.visualSlot} className="slot-gap slot-gap-lg" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
           }
-          const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
+          const peeked = me ? peeks.peekAt(me.playerId, slot.visualSlot) : null;
           const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === slot.visualSlot;
           const slapPickable = !pickable && canSelectSlapTarget;
           const activityRole = activityRoleForSlot(activityVisual, me.playerId, slot.cardSlot, slot.visualSlot);

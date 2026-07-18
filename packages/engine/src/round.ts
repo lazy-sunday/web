@@ -108,7 +108,7 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
         type: 'peek',
         to: player.id,
         reason: 'setup',
-        reveals: [{ owner: player.id, slot, card: player.list[slot]! }],
+        reveals: [{ owner: player.id, slot, visualSlot: visualSlotAt(player, slot), card: player.list[slot]! }],
       });
       return { ok: true, state, events };
     }
@@ -311,7 +311,12 @@ function handleActionInput(
       // §5: peek at ONE of your own cards.
       const slot = compactSlotAtVisual(me, input.slot);
       if (slot === null) return fail('invalidSlot', 'no card in that slot');
-      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot, card: me.list[slot]! }] });
+      events.push({
+        type: 'peek',
+        to: playerId,
+        reason: 'action',
+        reveals: [{ owner: playerId, slot, visualSlot: visualSlotAt(me, slot), card: me.list[slot]! }],
+      });
       events.push({ type: 'checkedTheList', player: playerId, slot, visualSlot: visualSlotAt(me, slot) });
       finishAction(state, events);
       return { ok: true, state, events };
@@ -321,7 +326,12 @@ function handleActionInput(
       // §5: peek at ONE of your own cards; you MAY then discard it (any value).
       const slot = compactSlotAtVisual(me, input.slot);
       if (slot === null) return fail('invalidSlot', 'no card in that slot');
-      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: playerId, slot, card: me.list[slot]! }] });
+      events.push({
+        type: 'peek',
+        to: playerId,
+        reason: 'action',
+        reveals: [{ owner: playerId, slot, visualSlot: visualSlotAt(me, slot), card: me.list[slot]! }],
+      });
       events.push({ type: 'knockItOutPeeked', player: playerId, slot, visualSlot: visualSlotAt(me, slot) });
       pa.step = 'knockItOutDecision';
       pa.knockSlot = slot;
@@ -396,7 +406,12 @@ function handleActionInput(
       if (!target || target.id === playerId) return fail('invalidTarget', 'Snoop targets an opponent');
       const slot = compactSlotAtVisual(target, input.slot);
       if (slot === null) return fail('invalidSlot', 'no card in that slot');
-      events.push({ type: 'peek', to: playerId, reason: 'action', reveals: [{ owner: target.id, slot, card: target.list[slot]! }] });
+      events.push({
+        type: 'peek',
+        to: playerId,
+        reason: 'action',
+        reveals: [{ owner: target.id, slot, visualSlot: visualSlotAt(target, slot), card: target.list[slot]! }],
+      });
       events.push({ type: 'snooped', player: playerId, targetId: target.id, slot, visualSlot: visualSlotAt(target, slot) });
       finishAction(state, events);
       return { ok: true, state, events };

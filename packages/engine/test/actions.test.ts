@@ -19,13 +19,19 @@ function aboutToDraw(action: Parameters<typeof makeRound>[0]['deck'] extends (in
 describe('Check the List (§5)', () => {
   it('peeks at ONE of your own cards, privately, then the turn ends', () => {
     const acting = drawAndPlayAction(aboutToDraw('Check the List'), 'a').state;
+    player(acting, 'a').slotPositions = [0, 1, 3];
     const r = ok(applyCommand(acting, {
-      type: 'actionInput', player: 'a', input: { action: 'Check the List', slot: 2 },
+      type: 'actionInput', player: 'a', input: { action: 'Check the List', slot: 3 },
     }));
     const peek = evt(r.events, 'peek');
     expect(peek.to).toBe('a');
     expect(peek.reason).toBe('action'); // §5 granted peek — the short reveal
-    expect(peek.reveals).toEqual([{ owner: 'a', slot: 2, card: player(r.state, 'a').list[2] }]);
+    expect(peek.reveals).toEqual([{
+      owner: 'a',
+      slot: 2,
+      visualSlot: 3,
+      card: player(r.state, 'a').list[2],
+    }]);
     expect(peek.reveals[0]!.card.name).toBe('Water the Plants');
     expect(r.state.pendingAction).toBeNull();
     expect(r.state.turn).toBe(1);
@@ -45,7 +51,9 @@ describe('Knock It Out (§5, §9.5)', () => {
     const peeked = ok(applyCommand(acting, {
       type: 'actionInput', player: 'a', input: { action: 'Knock It Out', slot: 1 },
     }));
-    expect(evt(peeked.events, 'peek').reveals[0]!.card.name).toBe('Feed the Cat');
+    const reveal = evt(peeked.events, 'peek').reveals[0]!;
+    expect(reveal.card.name).toBe('Feed the Cat');
+    expect(reveal.visualSlot).toBe(1);
     expect(peeked.state.phase).toBe('action'); // still resolving
     const r = ok(applyCommand(peeked.state, { type: 'knockItOutDecision', player: 'a', discard: true }));
     expect(player(r.state, 'a').list.map((c) => c.name)).toEqual(['Nap', 'Water the Plants']);
@@ -62,6 +70,20 @@ describe('Knock It Out (§5, §9.5)', () => {
     expect(player(r.state, 'a').list).toHaveLength(3);
     expect(doneTop(r.state).name).toBe('Knock It Out');
     expect(r.state.turn).toBe(1);
+  });
+
+  it('identifies the stable visual slot when an earlier card has left a gap', () => {
+    const acting = drawAndPlayAction(aboutToDraw('Knock It Out'), 'a').state;
+    player(acting, 'a').slotPositions = [0, 2, 3];
+
+    const peeked = ok(applyCommand(acting, {
+      type: 'actionInput', player: 'a', input: { action: 'Knock It Out', slot: 2 },
+    }));
+    const reveal = evt(peeked.events, 'peek').reveals[0]!;
+
+    expect(reveal.slot).toBe(1);
+    expect(reveal.visualSlot).toBe(2);
+    expect(evt(peeked.events, 'knockItOutPeeked').visualSlot).toBe(2);
   });
 
   it('any value may be knocked out, and the self-discard triggers no further action (§9.5)', () => {
@@ -157,13 +179,19 @@ describe('Switcheroo (§5, §9.4)', () => {
 describe('Snoop (§5)', () => {
   it('peeks at ONE opponent card, privately', () => {
     const acting = drawAndPlayAction(aboutToDraw('Snoop'), 'a').state;
+    player(acting, 'c').slotPositions = [1, 2];
     const r = ok(applyCommand(acting, {
-      type: 'actionInput', player: 'a', input: { action: 'Snoop', targetId: 'c', slot: 0 },
+      type: 'actionInput', player: 'a', input: { action: 'Snoop', targetId: 'c', slot: 1 },
     }));
     const peek = evt(r.events, 'peek');
     expect(peek.to).toBe('a');
     expect(peek.reason).toBe('action'); // §5 Snoop is a short granted peek
-    expect(peek.reveals[0]).toEqual({ owner: 'c', slot: 0, card: player(r.state, 'c').list[0] });
+    expect(peek.reveals[0]).toEqual({
+      owner: 'c',
+      slot: 0,
+      visualSlot: 1,
+      card: player(r.state, 'c').list[0],
+    });
     expect(peek.reveals[0]!.card.name).toBe('Vacuum the Living Room');
   });
 
