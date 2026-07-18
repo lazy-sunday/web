@@ -28,6 +28,7 @@ import { RevealScreen } from './RevealScreen';
 import { SlapLayer, type SlapTarget } from './SlapLayer';
 import { SoundToggle } from './SoundToggle';
 import { HouseRuleBadges } from './HouseRuleBadges';
+import { unavailableActionMessage } from '../lib/actionMeta';
 
 type Game = ReturnType<typeof useGameSocket>;
 
@@ -651,6 +652,11 @@ function CenterPiles({
             drawn={drawn}
             myListSize={myListSize}
             inFlight={inFlight}
+            actionUnavailableReason={
+              view.myDrawnActionUnavailableReason
+                ? unavailableActionMessage(view.myDrawnActionUnavailableReason)
+                : null
+            }
             pickingKeepSlot={pickMode === 'keep'}
             onKeep={() => {
               if (myListSize === 0) {
@@ -814,6 +820,7 @@ function TableCardDecision({
   drawn,
   myListSize,
   inFlight,
+  actionUnavailableReason,
   pickingKeepSlot,
   onKeep,
   onDiscard,
@@ -823,6 +830,7 @@ function TableCardDecision({
   drawn: { name: string; effort: number; kind: string };
   myListSize: number;
   inFlight: boolean;
+  actionUnavailableReason: string | null;
   pickingKeepSlot: boolean;
   onKeep: () => void;
   onDiscard: () => void;
@@ -850,9 +858,20 @@ function TableCardDecision({
             </button>
             {isAction ? (
               <>
-                <button type="button" className="btn btn-night" disabled={inFlight} onClick={onPlayAction}>
+                <button
+                  type="button"
+                  className="btn btn-night"
+                  disabled={inFlight || actionUnavailableReason !== null}
+                  aria-describedby={actionUnavailableReason ? 'action-unavailable-note' : undefined}
+                  onClick={onPlayAction}
+                >
                   Play {drawn.name}
                 </button>
+                {actionUnavailableReason && (
+                  <p className="decision-unavailable-note" id="action-unavailable-note" role="note">
+                    {actionUnavailableReason}
+                  </p>
+                )}
                 <button type="button" className="btn btn-ghost" disabled={inFlight} onClick={onDiscard}>
                   Just discard
                 </button>

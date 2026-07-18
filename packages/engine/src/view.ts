@@ -3,6 +3,7 @@
 // modified client can't out-remember a human — memory is the game.
 
 import type { ActionName, Card } from './cards.js';
+import { actionUnavailableReason, type ActionUnavailableReason } from './actionAvailability.js';
 import type { PendingGift, Phase, PlayerId, RoundResult, RoundState } from './types.js';
 
 export interface PlayerView {
@@ -31,6 +32,9 @@ export interface RoundView {
   mySetupPeekSlots: number[];
   /** The drawn card, present ONLY in the current player's own view during 'drawn'. */
   myDrawnCard: Card | null;
+  /** Why the drawn action cannot be played right now. Present only in the
+   * drawing player's view; null means the action is available. */
+  myDrawnActionUnavailableReason: ActionUnavailableReason | null;
   pendingAction: {
     actor: PlayerId;
     action: ActionName;
@@ -47,6 +51,10 @@ export function viewFor(state: RoundState, playerId: PlayerId): RoundView {
   const inPlay = state.phase === 'turn' || state.phase === 'drawn' || state.phase === 'action';
   const pa = state.pendingAction;
   const recipient = state.players.find((p) => p.id === playerId);
+  const recipientDrewCard =
+    state.phase === 'drawn' && state.players[state.turn]!.id === playerId
+      ? state.drawnCard
+      : null;
   return {
     phase: state.phase,
     currentPlayer: inPlay ? state.players[state.turn]!.id : null,
@@ -63,9 +71,10 @@ export function viewFor(state: RoundState, playerId: PlayerId): RoundView {
       setupPeeked: p.setupPeeked,
     })),
     mySetupPeekSlots: recipient?.setupPeekSlots.slice() ?? [],
-    myDrawnCard:
-      state.phase === 'drawn' && state.players[state.turn]!.id === playerId && state.drawnCard
-        ? { ...state.drawnCard }
+    myDrawnCard: recipientDrewCard ? { ...recipientDrewCard } : null,
+    myDrawnActionUnavailableReason:
+      recipientDrewCard?.kind === 'action'
+        ? actionUnavailableReason(state, playerId, recipientDrewCard.name as ActionName)
         : null,
     pendingAction: pa
       ? {

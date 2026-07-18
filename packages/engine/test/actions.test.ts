@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyCommand } from '../src/round.js';
 import type { RoundState } from '../src/types.js';
+import { viewFor } from '../src/view.js';
 import { doneTop, drawAndPlayAction, err, evt, evts, makeRound, ok, play, player } from './helpers.js';
 
 /** Round where 'a' is about to draw the given action card. */
@@ -165,6 +166,7 @@ describe('Switcheroo (§5, §9.4)', () => {
 
   it('must target two players other than the user (§9.4)', () => {
     const acting = drawAndPlayAction(aboutToDraw('Switcheroo'), 'a').state;
+    const before = structuredClone(acting);
     for (const input of [
       { action: 'Switcheroo', a: 'a', aSlot: 0, b: 'b', bSlot: 0 },
       { action: 'Switcheroo', a: 'b', aSlot: 0, b: 'a', bSlot: 0 },
@@ -173,6 +175,7 @@ describe('Switcheroo (§5, §9.4)', () => {
       expect(err(applyCommand(acting, { type: 'actionInput', player: 'a', input })).code)
         .toBe('invalidTarget');
     }
+    expect(acting).toEqual(before);
   });
 });
 
@@ -219,6 +222,7 @@ describe("Not My Job (§5, §9.4)", () => {
 
   it('never involves the user (§9.4)', () => {
     const acting = drawAndPlayAction(aboutToDraw("Not My Job"), 'a').state;
+    const before = structuredClone(acting);
     for (const input of [
       { action: "Not My Job", fromId: 'a', fromSlot: 0, toId: 'b' },
       { action: "Not My Job", fromId: 'b', fromSlot: 0, toId: 'a' },
@@ -227,6 +231,58 @@ describe("Not My Job (§5, §9.4)", () => {
       expect(err(applyCommand(acting, { type: 'actionInput', player: 'a', input })).code)
         .toBe('invalidTarget');
     }
+    expect(acting).toEqual(before);
+  });
+});
+
+describe('actions that need two other players', () => {
+  for (const action of ['Switcheroo', 'Not My Job'] as const) {
+    it(`does not play ${action} with two players, but still allows a plain discard`, () => {
+      const s = makeRound({
+        players: [
+          { id: 'a', list: ['Nap'] },
+          { id: 'b', list: ['Feed the Cat'] },
+        ],
+        deck: [action, 'Water the Plants'],
+      });
+      const drawn = ok(applyCommand(s, { type: 'draw', player: 'a' })).state;
+      const before = structuredClone(drawn);
+      const rejected = err(applyCommand(drawn, {
+        type: 'discardDrawn', player: 'a', withAction: true,
+      }));
+
+      expect(rejected.code).toBe('notPerformable');
+      expect(drawn).toEqual(before);
+      expect(viewFor(drawn, 'a').myDrawnActionUnavailableReason).toBe('needsTwoOtherPlayers');
+      expect(viewFor(drawn, 'b').myDrawnActionUnavailableReason).toBeNull();
+
+      const discarded = ok(applyCommand(drawn, {
+        type: 'discardDrawn', player: 'a', withAction: false,
+      }));
+      expect(doneTop(discarded.state).name).toBe(action);
+      expect(discarded.state.pendingAction).toBeNull();
+      expect(discarded.state.players[discarded.state.turn]!.id).toBe('b');
+    });
+  }
+
+  it('accounts for the caller lock before opening a three-player target picker', () => {
+    const s = makeRound({
+      players: [
+        { id: 'a', list: ['Nap'] },
+        { id: 'b', list: ['Feed the Cat'] },
+        { id: 'c', list: ['Water the Plants'] },
+      ],
+      deck: ['Switcheroo', 'Fold the Laundry'],
+      turn: 1,
+      caller: 'a',
+      finalTurnQueue: ['b', 'c'],
+    });
+    const drawn = ok(applyCommand(s, { type: 'draw', player: 'b' })).state;
+    expect(viewFor(drawn, 'b').myDrawnActionUnavailableReason)
+      .toBe('callerLockLeavesTooFewTargets');
+    expect(err(applyCommand(drawn, {
+      type: 'discardDrawn', player: 'b', withAction: true,
+    })).code).toBe('notPerformable');
   });
 });
 

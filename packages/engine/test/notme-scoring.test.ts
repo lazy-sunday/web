@@ -140,17 +140,16 @@ describe('"NOT ME!" and final turns (§7)', () => {
       input: { action: "Let's Trade", mySlot: 0, opponentId: 'c', opponentSlot: 0 },
     }));
 
-    // c's final turn: draws Switcheroo — both targets would need to exclude c and
-    // the caller, leaving only b: no legal pair, so targeting a is callerLocked
-    const cActing = play(bDone.state,
-      { type: 'draw', player: 'c' },
-      { type: 'discardDrawn', player: 'c', withAction: true },
-    ).state;
-    expect(err(applyCommand(cActing, {
-      type: 'actionInput', player: 'c',
-      input: { action: 'Switcheroo', a: 'a', aSlot: 0, b: 'b', bSlot: 0 },
-    })).code).toBe('callerLocked');
-    const revealed = ok(applyCommand(cActing, { type: 'cancelAction', player: 'c' }));
+    // c's final turn: Switcheroo would need to exclude c and the locked caller,
+    // leaving only b. The action cannot start, but the plain discard still ends
+    // the final turn normally.
+    const cDrawn = ok(applyCommand(bDone.state, { type: 'draw', player: 'c' })).state;
+    expect(err(applyCommand(cDrawn, {
+      type: 'discardDrawn', player: 'c', withAction: true,
+    })).code).toBe('notPerformable');
+    const revealed = ok(applyCommand(cDrawn, {
+      type: 'discardDrawn', player: 'c', withAction: false,
+    }));
     expect(revealed.state.phase).toBe('reveal');
   });
 
