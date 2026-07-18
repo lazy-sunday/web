@@ -15,12 +15,12 @@ describe('table activity spotlight', () => {
     const entries = buildActivityLog(events, nameOf);
     assert.equal(entries.length, 1);
     assert.equal(entries[0]?.status, 'resolved');
-    assert.equal(entries[0]?.text, "Alice blind-swapped their card (slot 2) with Bob's (slot 1).");
+    assert.equal(entries[0]?.text, "Alice blind-swapped their card with Bob's.");
     assert.deepEqual(entries[0]?.visual, {
       kind: 'swap',
       slots: [
-        { player: 'a', slot: 1, role: 'swap' },
-        { player: 'b', slot: 0, role: 'swap' },
+        { player: 'a', slot: 1, space: 'compact', role: 'swap' },
+        { player: 'b', slot: 0, space: 'compact', role: 'swap' },
       ],
     });
   });
@@ -34,10 +34,10 @@ describe('table activity spotlight', () => {
     };
 
     const entry = latestSpotlightEntry(buildActivityLog([kept], nameOf));
-    assert.equal(entry?.text, 'Bob kept the drawn card (slot 3).');
+    assert.equal(entry?.text, 'Bob kept the drawn card.');
     assert.deepEqual(entry?.visual, {
       kind: 'focus',
-      slots: [{ player: 'b', slot: 2, role: 'target' }],
+      slots: [{ player: 'b', slot: 2, space: 'compact', role: 'target' }],
     });
   });
 
@@ -54,7 +54,21 @@ describe('table activity spotlight', () => {
     assert.equal(entry?.text, 'Bob kept the drawn card (slot 6).');
     assert.deepEqual(entry?.visual, {
       kind: 'focus',
-      slots: [{ player: 'b', slot: 5, role: 'target' }],
+      slots: [{ player: 'b', slot: 5, space: 'visual', role: 'target' }],
+    });
+  });
+
+  it('keeps legacy Landlord events in compact slot space', () => {
+    const events: EngineEvent[] = [
+      { type: 'actionStarted', player: 'a', action: "Landlord's Notice" },
+      { type: 'landlordsNoticed', player: 'a', targetId: 'b', slot: 5 },
+    ];
+
+    const entry = latestSpotlightEntry(buildActivityLog(events, nameOf));
+    assert.equal(entry?.text, "Alice slid a face-down card onto Bob's list.");
+    assert.deepEqual(entry?.visual, {
+      kind: 'move',
+      slots: [{ player: 'b', slot: 5, space: 'compact', role: 'target' }],
     });
   });
 
@@ -64,7 +78,7 @@ describe('table activity spotlight', () => {
 
     assert.equal(entry?.isAction, true);
     assert.equal(entry?.action, 'Snoop');
-    assert.equal(entry?.text, "Alice snooped Bob's card (slot 2).");
+    assert.equal(entry?.text, "Alice snooped Bob's card.");
   });
 
   it('does not expose private peek or drawn-card identities in activity text', () => {

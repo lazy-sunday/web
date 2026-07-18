@@ -47,6 +47,7 @@ import {
   type ClientMessage,
   type ServerMessage,
 } from './protocol.js';
+import { normalizeClientCommand } from './slotProtocol.js';
 
 // Slap rate limit: max 3 slap commands per 2 seconds per client.
 const SLAP_WINDOW_MS = 2_000;
@@ -119,7 +120,7 @@ function handleMessage(conn: Conn, msg: ClientMessage): void {
       handleStartGame(room, player);
       return;
     case 'command':
-      handleCommand(room, player, msg.command as Record<string, unknown>);
+      handleCommand(room, player, msg.command);
       return;
     case 'nextRound':
       handleNextRound(room, player);
@@ -420,14 +421,18 @@ function seatOrderedIds(room: Room): PlayerId[] {
 // Engine commands
 // ---------------------------------------------------------------------------
 
-function handleCommand(room: Room, player: RoomPlayer, clientCmd: Record<string, unknown>): void {
+function handleCommand(
+  room: Room,
+  player: RoomPlayer,
+  clientCmd: Extract<ClientMessage, { type: 'command' }>['command'],
+): void {
   if (room.status !== 'playing' || !room.round) {
     sendTo(player, { type: 'error', code: 'wrongStatus', message: 'the round is not in play' });
     return;
   }
 
   // Rate-limit slaps (spam protection; arbitration itself is arrival order).
-  if (clientCmd['type'] === 'slap') {
+  if (clientCmd.type === 'slap') {
     const now = Date.now();
     player.slapTimes = player.slapTimes.filter((t) => now - t < SLAP_WINDOW_MS);
     if (player.slapTimes.length >= SLAP_MAX_IN_WINDOW) {
@@ -439,7 +444,7 @@ function handleCommand(room: Room, player: RoomPlayer, clientCmd: Record<string,
 
   // Stamp the SENDER's playerId. A client-supplied `player` field is discarded —
   // the socket's identity is the only identity the server trusts.
-  const cmd = { ...clientCmd, player: player.id } as Command;
+  const cmd = normalizeClientCommand(room.round, player.id, clientCmd);
   if ((cmd as { type: string }).type === 'forceSkipTurn') {
     sendTo(player, { type: 'error', code: 'badMessage', message: 'nice try' });
     return;

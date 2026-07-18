@@ -571,7 +571,7 @@ function OpponentRow({
           }
           const peeked = peeks.peekAt(playerId, slot.cardSlot);
           const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === slot.visualSlot;
-          const activityRole = activityRoleForSlot(activityVisual, playerId, slot.visualSlot);
+          const activityRole = activityRoleForSlot(activityVisual, playerId, slot.cardSlot, slot.visualSlot);
           return (
             <button
               key={slot.visualSlot}
@@ -766,7 +766,7 @@ function MyRow({
           const peeked = me ? peeks.peekAt(me.playerId, slot.cardSlot) : null;
           const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === slot.visualSlot;
           const slapPickable = !pickable && canSelectSlapTarget;
-          const activityRole = activityRoleForSlot(activityVisual, me.playerId, slot.visualSlot);
+          const activityRole = activityRoleForSlot(activityVisual, me.playerId, slot.cardSlot, slot.visualSlot);
           return (
             <button
               key={slot.visualSlot}
@@ -775,7 +775,11 @@ function MyRow({
               data-pickable={pickable}
               data-slap-pickable={slapPickable}
               data-slap-selected={selected}
-              data-just-placed={justPlacedSlot === slot.visualSlot}
+              data-just-placed={
+                justPlacedSlot?.space === 'compact'
+                  ? justPlacedSlot.slot === slot.cardSlot
+                  : justPlacedSlot?.slot === slot.visualSlot
+              }
               data-activity-role={activityRole}
               disabled={pickable ? inFlight : !slapPickable}
               aria-pressed={slapPickable ? selected : undefined}
@@ -889,9 +893,13 @@ function useJustChanged(value: string | null): boolean {
 function activityRoleForSlot(
   visual: ActivityVisual | undefined,
   player: PlayerId,
+  cardSlot: number,
   visualSlot: number,
 ): ActivityVisual['slots'][number]['role'] | undefined {
-  return visual?.slots.find((candidate) => candidate.player === player && candidate.slot === visualSlot)?.role;
+  return visual?.slots.find((candidate) =>
+    candidate.player === player &&
+    candidate.slot === (candidate.space === 'compact' ? cardSlot : visualSlot)
+  )?.role;
 }
 
 /** The slot index I most recently placed a card into via keep/take-from-DONE,
@@ -899,8 +907,11 @@ function activityRoleForSlot(
  *  also place a card into my list unseen — we don't animate that one slot
  *  specially since the identity is never public, but the list-size change
  *  itself is still visible via the row re-rendering. */
-function useJustPlacedSlot(events: Game['events'], myId: PlayerId | null): number | null {
-  const [slot, setSlot] = useState<number | null>(null);
+function useJustPlacedSlot(
+  events: Game['events'],
+  myId: PlayerId | null,
+): { slot: number; space: 'compact' | 'visual' } | null {
+  const [slot, setSlot] = useState<{ slot: number; space: 'compact' | 'visual' } | null>(null);
   const lastSeenSequence = useRef(0);
   useEffect(() => {
     const newEvents = eventsAfter(events, lastSeenSequence.current);
@@ -909,7 +920,10 @@ function useJustPlacedSlot(events: Game['events'], myId: PlayerId | null): numbe
     if (!myId) return;
     for (const { event: ev } of newEvents) {
       if ((ev.type === 'kept' || ev.type === 'tookFromDone') && ev.player === myId) {
-        setSlot(ev.visualSlot ?? ev.slot);
+        setSlot({
+          slot: ev.visualSlot ?? ev.slot,
+          space: ev.visualSlot === undefined ? 'compact' : 'visual',
+        });
         const t = setTimeout(() => setSlot(null), 240);
         return () => clearTimeout(t);
       }

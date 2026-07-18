@@ -10,14 +10,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EngineEvent, PlayerId, RoundView, SessionEvent } from '@lazy-sunday/engine';
 import type {
-  ClientCommand,
   ClientMessage,
   LobbyState,
   RoundRestartVoteUpdate,
   ServerMessage,
+  VisualClientCommand,
 } from '@lazy-sunday/server/protocol';
 import { WS_URL } from './config';
 import { appendEvent, type SequencedEvent } from './eventLog';
+import { encodeClientCommand } from './slotProtocol';
 
 export interface StoredIdentity {
   playerId: PlayerId;
@@ -71,7 +72,7 @@ export interface GameSocket {
   /** Send a raw protocol message. */
   send: (msg: ClientMessage) => void;
   /** Send an engine command (server stamps our player id). */
-  sendCommand: (command: ClientCommand) => void;
+  sendCommand: (command: VisualClientCommand) => void;
   /** Send an emoji reaction (server broadcasts it back as `reaction`). */
   sendReaction: (emoji: string) => void;
   clearError: () => void;
@@ -261,8 +262,11 @@ export function useGameSocket(roomCode: string): GameSocket {
   );
 
   const sendCommand = useCallback(
-    (command: ClientCommand) => rawSend({ type: 'command', command }),
-    [rawSend],
+    (command: VisualClientCommand) => rawSend({
+      type: 'command',
+      command: encodeClientCommand(command, view, me?.playerId ?? null),
+    }),
+    [rawSend, view, me?.playerId],
   );
 
   // Client-side politeness limit: 1 reaction/sec. The server doesn't need to
