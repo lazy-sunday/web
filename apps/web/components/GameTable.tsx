@@ -11,7 +11,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardName, EngineEvent, PlayerId } from '@lazy-sunday/engine';
 import type { useGameSocket } from '../lib/useGameSocket';
-import { buildActivityLog, latestSpotlightEntry, type ActivityVisual } from '../lib/activity';
+import {
+  buildActivityLog,
+  isTableHandoffBlocked,
+  latestSpotlightEntry,
+  type ActivityVisual,
+} from '../lib/activity';
 import { ActionAnnouncement, ActivityLog, useActivitySpotlight } from './TableActivity';
 import { eventsAfter } from '../lib/eventLog';
 import { commandErrorMatches } from '../lib/commandPending';
@@ -73,6 +78,11 @@ export function GameTable({ game }: { game: Game }) {
   );
   const latestActivity = useMemo(() => latestSpotlightEntry(activityEntries), [activityEntries]);
   const spotlight = useActivitySpotlight(latestActivity);
+  const tableHandoffBlocked = isTableHandoffBlocked(
+    spotlight,
+    view?.currentPlayer ?? null,
+    me?.playerId ?? null,
+  );
 
   const [pendingRequestId, setPendingRequestId] = useState<number | null>(null);
   const inFlight = pendingRequestId !== null;
@@ -102,6 +112,9 @@ export function GameTable({ game }: { game: Game }) {
   useEffect(() => {
     if (pickMode !== null) clearSlapTarget();
   }, [pickMode, clearSlapTarget]);
+  useEffect(() => {
+    if (tableHandoffBlocked) clearSlapTarget();
+  }, [tableHandoffBlocked, clearSlapTarget]);
 
   if (!view || !me || !lobby) return null;
 
@@ -124,11 +137,16 @@ export function GameTable({ game }: { game: Game }) {
   const myPlayerView = view.players.find((p) => p.id === myId);
   const opponentSeats = orderOpponentSeats(view.players, lobby.players, myId);
   const myListSize = myPlayerView?.listSize ?? 0;
-  const canSelectSlapTarget = view.doneTop !== null && view.phase !== 'action' && view.pendingGift === null && pickMode === null;
+  const canSelectSlapTarget =
+    !tableHandoffBlocked &&
+    view.doneTop !== null &&
+    view.phase !== 'action' &&
+    view.pendingGift === null &&
+    pickMode === null;
   const canSelectOpponentSlapTarget = canSelectSlapTarget && myListSize > 0;
 
   function sendGuarded(fn: () => number) {
-    if (inFlight) return;
+    if (inFlight || tableHandoffBlocked) return;
     setPendingRequestId(fn());
   }
 
@@ -163,7 +181,11 @@ export function GameTable({ game }: { game: Game }) {
       {view.phase === 'setupPeek' ? (
         <SetupPeekPanel game={game} peeks={peeks} inFlight={inFlight} sendGuarded={sendGuarded} />
       ) : (
-        <div className="table-stage">
+        <div
+          className="table-stage"
+          data-turn-handoff-blocked={tableHandoffBlocked}
+          aria-disabled={tableHandoffBlocked}
+        >
           <div className="table-center-zone" id="shared-piles">
             <ActionAnnouncement entry={spotlight} />
 
@@ -172,7 +194,7 @@ export function GameTable({ game }: { game: Game }) {
               myListSize={myPlayerView?.listSize ?? 0}
               inFlight={inFlight}
               sendGuarded={sendGuarded}
-              isMyTurn={isMyTurn}
+              isMyTurn={isMyTurn && !tableHandoffBlocked}
               pickMode={pickMode}
               onStartKeepPick={() => setPickMode('keep')}
               onStartTakeFromDone={() => setPickMode('takeFromDone')}
@@ -184,7 +206,7 @@ export function GameTable({ game }: { game: Game }) {
             game={game}
             myListSize={myListSize}
             slots={renderSlotsFor(myPlayerView)}
-            isMyTurn={isMyTurn}
+            isMyTurn={isMyTurn && !tableHandoffBlocked}
             isCaller={view.caller === myId}
             peeks={peeks}
             inFlight={inFlight}
