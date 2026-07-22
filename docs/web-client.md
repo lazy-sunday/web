@@ -47,6 +47,7 @@ The lobby handles host-only toggles, share-link copying, start game, next round,
 - Opponent rows with list sizes and face-down cards.
 - Center deck and DONE piles.
 - The player's own row.
+- One-based slot badges (`S1`, `S2`, and so on) on every occupied or empty player slot, matching activity notifications.
 - Drawn-card controls.
 - Slap layer.
 - Guided action modal.

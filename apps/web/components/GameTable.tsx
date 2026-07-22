@@ -24,7 +24,7 @@ import { usePeeks } from '../lib/usePeeks';
 import { useCountdown } from '../lib/useCountdown';
 import { useSound } from '../lib/useSound';
 import { useGameSounds } from '../lib/useGameSounds';
-import { renderSlotsFor } from '../lib/slots';
+import { renderSlotsFor, slotLabelFor } from '../lib/slots';
 import { orderOpponentSeats } from '../lib/tableSeats';
 import { ActionModal } from './ActionModal';
 import { CardBack, CardFace } from './Card';
@@ -492,7 +492,11 @@ function SetupPeekPanel({
       <div className="my-list-row" role="group" aria-label="Your chore list">
         {slots.map((slot) => {
           if (!slot.occupied || slot.cardSlot === null) {
-            return <span key={slot.visualSlot} className="slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
+            return (
+              <span key={slot.visualSlot} className="slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`}>
+                <SlotNumber visualSlot={slot.visualSlot} />
+              </span>
+            );
           }
           const peeked = me ? peeks.peekAt(me.playerId, slot.visualSlot) : null;
           const isSelected = selected.includes(slot.cardSlot);
@@ -512,6 +516,7 @@ function SetupPeekPanel({
               }
               onClick={() => peekAtSlot(slot.visualSlot)}
             >
+              <SlotNumber visualSlot={slot.visualSlot} />
               {peeked ? <CardFace name={peeked.name as CardName} /> : <CardBack />}
             </button>
           );
@@ -594,7 +599,11 @@ function OpponentRow({
       <div className="opponent-cards" role="group" aria-label={`${name}'s chore list`}>
         {slots.map((slot) => {
           if (!slot.occupied || slot.cardSlot === null) {
-            return <span key={slot.visualSlot} className="opp-slot slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
+            return (
+              <span key={slot.visualSlot} className="opp-slot slot-gap" aria-label={`Empty slot ${slot.visualSlot + 1}`}>
+                <SlotNumber visualSlot={slot.visualSlot} />
+              </span>
+            );
           }
           const peeked = peeks.peekAt(playerId, slot.visualSlot);
           const selected = selectedSlapTarget?.owner === playerId && selectedSlapTarget.slot === slot.visualSlot;
@@ -616,6 +625,7 @@ function OpponentRow({
               aria-pressed={canSelectSlapTarget ? selected : undefined}
               onClick={() => onSelectSlapTarget(playerId, slot.visualSlot)}
             >
+              <SlotNumber visualSlot={slot.visualSlot} />
               {peeked ? <CardFace name={peeked.name as CardName} className="card-img-sm" /> : <CardBack className="card-img-sm" />}
             </button>
           );
@@ -793,7 +803,11 @@ function MyRow({
       <div className="my-list-row" role="group" aria-label="Your chore list">
         {slots.map((slot) => {
           if (!slot.occupied || slot.cardSlot === null) {
-            return <span key={slot.visualSlot} className="slot-gap slot-gap-lg" aria-label={`Empty slot ${slot.visualSlot + 1}`} />;
+            return (
+              <span key={slot.visualSlot} className="slot-gap slot-gap-lg" aria-label={`Empty slot ${slot.visualSlot + 1}`}>
+                <SlotNumber visualSlot={slot.visualSlot} />
+              </span>
+            );
           }
           const peeked = me ? peeks.peekAt(me.playerId, slot.visualSlot) : null;
           const selected = selectedSlapTarget?.owner === me.playerId && selectedSlapTarget.slot === slot.visualSlot;
@@ -828,6 +842,7 @@ function MyRow({
                 }
               }}
             >
+              <SlotNumber visualSlot={slot.visualSlot} />
               {peeked ? <CardFace name={peeked.name as CardName} /> : <CardBack />}
             </button>
           );
@@ -836,6 +851,13 @@ function MyRow({
       </div>
     </div>
   );
+}
+
+/** Visible slot references mirror the one-based wording used by activity
+ * notifications. The containing card or gap already carries the full
+ * accessible label, so this compact visual badge stays out of the a11y tree. */
+function SlotNumber({ visualSlot }: { visualSlot: number }) {
+  return <span className="slot-number" aria-hidden="true">{slotLabelFor(visualSlot)}</span>;
 }
 
 function TableCardDecision({

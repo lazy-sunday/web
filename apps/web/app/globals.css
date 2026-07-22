@@ -1231,6 +1231,7 @@ select {
 }
 
 .opp-slot {
+  position: relative;
   flex-shrink: 0;
   width: 44px;
   min-height: 44px;
@@ -1410,6 +1411,7 @@ select {
 }
 
 .slot-btn {
+  position: relative;
   flex-shrink: 0;
   width: 72px;
   min-height: 44px;
@@ -1427,6 +1429,7 @@ select {
 }
 
 .slot-gap {
+  position: relative;
   flex-shrink: 0;
   width: 72px;
   aspect-ratio: 695 / 949;
@@ -1445,6 +1448,39 @@ select {
 
 .slot-gap-lg {
   width: 88px;
+}
+
+.slot-number {
+  position: absolute;
+  z-index: 3;
+  top: 3px;
+  left: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 19px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 233, 184, 0.9);
+  border-radius: 999px;
+  background: rgba(35, 46, 82, 0.94);
+  box-shadow: 0 1px 4px rgba(16, 24, 48, 0.28);
+  color: var(--night-accent);
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+.opp-slot .slot-number {
+  top: 2px;
+  left: 2px;
+  min-width: 20px;
+  height: 16px;
+  padding: 0 3px;
+  font-size: 9px;
 }
 
 .slot-btn:not(:disabled):active {
