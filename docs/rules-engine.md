@@ -77,6 +77,14 @@ Each player may reveal up to two different cards from their own list during one 
 
 On turn, a player can draw from the deck, take the DONE top, or call "NOT ME!". A drawn card is private until kept or discarded. Taking from DONE always swaps with an existing card and never triggers an action.
 
+When an ordinary draw, Landlord's Notice, or a wrong-slap penalty consumes the
+last deck card, the engine immediately shuffles the DONE pile except its current
+top into a new deck and emits `deckReshuffled`. If the DONE pile contains only
+its top at that moment, the deck remains empty until resolving the drawn card or
+another discard creates a recyclable card; the engine then reshuffles without
+requiring another draw attempt. The reshuffle never exposes face-down card
+identities.
+
 ### Actions
 
 Actions trigger only when an action card is drawn from the deck and discarded with action. Replaced cards, DONE-pile cards, slaps, and Knock It Out self-discards do not chain-trigger actions.
