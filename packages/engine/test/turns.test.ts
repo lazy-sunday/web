@@ -210,6 +210,23 @@ describe('empty-list players (§9.2)', () => {
 });
 
 describe('deck exhaustion (§9.1)', () => {
+  it('reshuffles immediately when an ordinary draw consumes the last deck card', () => {
+    const s = makeRound({
+      players: [{ id: 'a', list: ['Nap'] }, { id: 'b', list: ['Nap'] }],
+      deck: ['Vacuum the Living Room'],
+      done: ['Feed the Cat', 'Water the Plants', 'Fold the Laundry', 'Snoop'],
+    });
+    const r = ok(applyCommand(s, { type: 'draw', player: 'a' }));
+    const drawn = r.state.drawnCard!;
+
+    expect(drawn.name).toBe('Vacuum the Living Room');
+    expect(evt(r.events, 'deckReshuffled').deckSize).toBe(3);
+    expect(r.state.deck).toHaveLength(3);
+    expect(r.state.deck.some((card) => card.id === drawn.id)).toBe(false);
+    expect(r.state.done).toHaveLength(1);
+    expect(doneTop(r.state).name).toBe('Feed the Cat');
+  });
+
   it('reshuffles the DONE pile except its top card into a new deck on draw', () => {
     const s = makeRound({
       players: [{ id: 'a', list: ['Nap'] }, { id: 'b', list: ['Nap'] }],
@@ -223,6 +240,26 @@ describe('deck exhaustion (§9.1)', () => {
     // drawn card came from the reshuffled pile
     expect(r.state.deck).toHaveLength(2);
     expect(['Water the Plants', 'Fold the Laundry', 'Snoop']).toContain(r.state.drawnCard!.name);
+  });
+
+  it('defers reshuffling until resolving the last draw creates a recyclable DONE card', () => {
+    const s = makeRound({
+      players: [{ id: 'a', list: ['Nap'] }, { id: 'b', list: ['Nap'] }],
+      deck: ['Vacuum the Living Room'],
+      done: ['Feed the Cat'],
+    });
+    const drawn = ok(applyCommand(s, { type: 'draw', player: 'a' }));
+
+    expect(drawn.state.deck).toHaveLength(0);
+    expect(evts(drawn.events, 'deckReshuffled')).toHaveLength(0);
+
+    const discarded = ok(applyCommand(drawn.state, {
+      type: 'discardDrawn', player: 'a', withAction: false,
+    }));
+    expect(evt(discarded.events, 'deckReshuffled').deckSize).toBe(1);
+    expect(discarded.state.deck.map((card) => card.name)).toEqual(['Feed the Cat']);
+    expect(discarded.state.done).toHaveLength(1);
+    expect(doneTop(discarded.state).name).toBe('Vacuum the Living Room');
   });
 
   it('when deck is empty and DONE has only its top card, drawing is impossible', () => {

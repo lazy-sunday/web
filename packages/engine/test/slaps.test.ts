@@ -123,6 +123,23 @@ describe('"Done it!" quick discard (§6)', () => {
     expect(player(r.state, 'b').list).toHaveLength(2);
   });
 
+  it('reshuffles immediately when a wrong-slap penalty consumes the last deck card (§9.1)', () => {
+    const s = makeRound({
+      players: [{ id: 'a', list: ['Nap'] }, { id: 'b', list: ['Water the Plants'] }],
+      deck: ['Take Out the Trash'],
+      done: ['Feed the Cat', 'Fold the Laundry', 'Snoop'],
+    });
+    const r = ok(applyCommand(s, { type: 'slap', player: 'b', owner: 'b', slot: 0 }));
+    const penalty = player(r.state, 'b').list[1]!;
+
+    expect(evt(r.events, 'slapWrong').penaltyDrawn).toBe(true);
+    expect(penalty.name).toBe('Take Out the Trash');
+    expect(evt(r.events, 'deckReshuffled').deckSize).toBe(2);
+    expect(r.state.deck.some((card) => card.id === penalty.id)).toBe(false);
+    expect(r.state.done).toHaveLength(1);
+    expect(doneTop(r.state).name).toBe('Feed the Cat');
+  });
+
   it('later slaps for the same match are returned without penalty (§9.6)', () => {
     const s = base();
     const topId = doneTop(s).id;

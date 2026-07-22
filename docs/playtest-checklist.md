@@ -232,13 +232,19 @@ of the round.
 26. Deliberately burn through the deck: have players repeatedly draw and
     discard (declining actions) for several rounds of turns. Watch the
     `deckCount` in the UI tick down.
-27. When the deck hits 0 and someone draws (or a slap penalty needs to draw),
-    watch what happens.
+27. Watch the operation that consumes the final deck card. Test an ordinary
+    draw and, when practical, Landlord's Notice or a wrong-slap penalty.
     - **Verify:** a `deckReshuffled` event fires. The DONE pile (all of it
       EXCEPT its current top card) gets shuffled into a fresh deck; the DONE
       pile itself resets to just that one top card. Deck count jumps back up.
-      This must happen transparently — the draw or penalty that triggered it
-      still completes in the same turn (§9.1).
+      This happens during the operation that consumes the final card, without
+      waiting for another draw or unrelated penalty. The card just consumed is
+      not shuffled back into the deck, and the draw, action, or penalty still
+      completes normally (§9.1).
+    - If the DONE pile has only its visible top when the final card is drawn,
+      resolve that card by discarding it or keeping it over a list card.
+      **Verify:** no premature reshuffle occurs, then the resulting discard
+      automatically makes the former DONE top into the new deck.
 28. Confirm identities of reshuffled cards are NOT revealed to anyone during
     the reshuffle — it's a silent, private shuffle.
 
