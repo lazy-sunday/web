@@ -311,18 +311,17 @@ describe("Landlord's Notice (§5, §9.4)", () => {
     expect(acting).toEqual(before);
   });
 
-  it('reshuffles per §9.1 when the deck is empty', () => {
-    const s = makeRound({
-      players: [{ id: 'a', list: ['Nap'] }, { id: 'b', list: ['Nap'] }],
-      deck: ["Landlord's Notice"],
-      done: ['Feed the Cat', 'Water the Plants', 'Fold the Laundry'],
-    });
-    const acting = drawAndPlayAction(s, 'a').state; // deck now empty; DONE has 4 cards
+  it('reshuffles immediately when serving the last deck card (§9.1)', () => {
+    const acting = drawAndPlayAction(aboutToDraw("Landlord's Notice"), 'a').state;
+    const served = acting.deck[acting.deck.length - 1]!;
+    expect(acting.deck).toHaveLength(1);
+
     const r = ok(applyCommand(acting, {
       type: 'actionInput', player: 'a', input: { action: "Landlord's Notice", targetId: 'b' },
     }));
-    expect(evt(r.events, 'deckReshuffled')).toBeDefined();
-    expect(player(r.state, 'b').list).toHaveLength(2);
+    expect(evt(r.events, 'deckReshuffled').deckSize).toBe(1);
+    expect(player(r.state, 'b').list[2]!.id).toBe(served.id);
+    expect(r.state.deck.some((card) => card.id === served.id)).toBe(false);
     expect(doneTop(r.state).name).toBe("Landlord's Notice"); // top card stays out of the reshuffle
   });
 });

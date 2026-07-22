@@ -117,13 +117,15 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
     case 'draw': {
       const err = requireTurn(state, player.id, 'turn');
       if (err) return fail(err.code, err.message);
-      if (!drawFromDeck(state, events)) {
+      const drawn = takeTopDeckCard(state, events);
+      if (!drawn) {
         return fail('deckEmpty', 'no cards left to draw — take from the DONE pile or call "NOT ME!"');
       }
-      state.drawnCard = state.deck.pop()!;
+      state.drawnCard = drawn;
       state.phase = 'drawn';
       events.push({ type: 'drew', player: player.id });
       events.push({ type: 'drawnCard', to: player.id, card: state.drawnCard });
+      reshuffleDoneIntoDeck(state, events);
       return { ok: true, state, events };
     }
 
@@ -153,6 +155,7 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
       // Replaced-card discards NEVER trigger actions (§4: "Actions trigger ONLY on
       // cards drawn from the deck" — i.e. the drawn card itself, discarded).
       events.push({ type: 'kept', player: player.id, slot, visualSlot, discarded: replaced });
+      reshuffleDoneIntoDeck(state, events);
       endTurn(state, events);
       return { ok: true, state, events };
     }
@@ -174,6 +177,7 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
       state.done.push(drawn);
       state.drawnCard = null;
       events.push({ type: 'discarded', player: player.id, card: drawn, withAction: cmd.withAction });
+      reshuffleDoneIntoDeck(state, events);
       if (cmd.withAction) {
         // §5: an action triggers only when drawn from the deck and discarded.
         state.phase = 'action'; // slaps lock now (§6)
@@ -202,6 +206,7 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
         const { card } = removeCard(player, slot);
         state.done.push(card);
         events.push({ type: 'knockedOut', player: player.id, card });
+        reshuffleDoneIntoDeck(state, events);
       } else {
         events.push({ type: 'knockItOutKept', player: player.id });
       }
@@ -238,6 +243,7 @@ export function applyCommand(prev: RoundState, cmd: Command): CommandResult {
       player.list[slot] = taken;
       state.done.push(replaced);
       events.push({ type: 'tookFromDone', player: player.id, slot, visualSlot, taken, discarded: replaced });
+      reshuffleDoneIntoDeck(state, events);
       endTurn(state, events);
       return { ok: true, state, events };
     }
@@ -466,11 +472,13 @@ function handleActionInput(
       if (callerLocked(target.id)) {
         return fail('callerLocked', "the caller's list is locked (§7)");
       }
-      if (!drawFromDeck(state, events)) {
+      const card = takeTopDeckCard(state, events);
+      if (!card) {
         return fail('notPerformable', 'no card left to serve — cancel the action instead');
       }
-      const slot = appendCard(target, state.deck.pop()!);
+      const slot = appendCard(target, card);
       events.push({ type: 'landlordsNoticed', player: playerId, targetId: target.id, slot, visualSlot: visualSlotAt(target, slot) });
+      reshuffleDoneIntoDeck(state, events);
       finishAction(state, events);
       return { ok: true, state, events };
     }
@@ -549,14 +557,16 @@ function handleSlap(
       state.pendingGift = { from: slapperId, to: owner.id, insertIndex: removed.visualSlot };
       events.push({ type: 'slapCorrect', player: slapperId, owner: owner.id, slot, card: removed.card, giftPending: true });
     }
+    reshuffleDoneIntoDeck(state, events);
   } else {
     // §6 wrong: the slapped card returns face-down to its owner's list (it hit the
     // pile face-up, so everyone saw it — the event carries its identity), and the
     // slapper draws one penalty card from the deck onto their own list, unseen
     // (a penalty draw is not one of the granted peeks).
-    const penaltyAvailable = drawFromDeck(state, events);
-    if (penaltyAvailable) appendCard(slapper, state.deck.pop()!);
-    events.push({ type: 'slapWrong', player: slapperId, owner: owner.id, slot, card, penaltyDrawn: penaltyAvailable });
+    const penalty = takeTopDeckCard(state, events);
+    if (penalty) appendCard(slapper, penalty);
+    events.push({ type: 'slapWrong', player: slapperId, owner: owner.id, slot, card, penaltyDrawn: penalty !== null });
+    reshuffleDoneIntoDeck(state, events);
   }
   return { ok: true, state, events };
 }
@@ -610,6 +620,7 @@ function handleForceSkip(
     state.done.push(drawn);
     state.drawnCard = null;
     events.push({ type: 'discarded', player: playerId, card: drawn, withAction: false });
+    reshuffleDoneIntoDeck(state, events);
     endTurn(state, events);
     return { ok: true, state, events };
   }
@@ -752,11 +763,16 @@ function requireTurn(
   return null;
 }
 
-/** Ensures at least one card is drawable, reshuffling per §9.1 if needed.
- *  Returns false when no card exists anywhere (deck empty, DONE has only its top). */
-function drawFromDeck(state: RoundState, events: EngineEvent[]): boolean {
-  if (state.deck.length > 0) return true;
-  // §9.1: shuffle the DONE pile (except its top card) into a new deck.
+/** Takes the top deck card, repairing an already-empty deck per §9.1 first. */
+function takeTopDeckCard(state: RoundState, events: EngineEvent[]): Card | null {
+  reshuffleDoneIntoDeck(state, events);
+  return state.deck.pop() ?? null;
+}
+
+/** §9.1: "Deck runs out: shuffle the DONE pile (except its top card) into a new deck."
+ *  If only the public DONE top exists, a later discard retries this normalization. */
+function reshuffleDoneIntoDeck(state: RoundState, events: EngineEvent[]): boolean {
+  if (state.deck.length > 0) return false;
   if (state.done.length <= 1) return false;
   const top = state.done.pop()!;
   const reshuffled = shuffle(state.done, state.rngState);
