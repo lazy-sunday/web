@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { renderSlotsFor } from './slots';
+import { renderSlotsFor, slotLabelFor } from './slots';
+
+describe('slotLabelFor', () => {
+  it('formats zero-based visual slots as concise one-based labels', () => {
+    assert.equal(slotLabelFor(0), 'S1');
+    assert.equal(slotLabelFor(5), 'S6');
+  });
+});
 
 describe('renderSlotsFor', () => {
   it('preserves explicit visual gaps from current player views', () => {

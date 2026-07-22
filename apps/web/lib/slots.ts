@@ -6,6 +6,12 @@ export interface RenderSlot {
   occupied: boolean;
 }
 
+/** Activity copy and card controls refer to visual slots as one-based S1, S2,
+ * and so on. Keep the visible badge format in one place. */
+export function slotLabelFor(visualSlot: number): string {
+  return `S${visualSlot + 1}`;
+}
+
 type SlotPlayerView = Pick<PlayerView, 'listSize'> & Partial<Pick<PlayerView, 'listSlots'>>;
 
 export function renderSlotsFor(player: SlotPlayerView | null | undefined): RenderSlot[] {
